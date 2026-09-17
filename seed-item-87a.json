@@ -1,0 +1,33 @@
+{
+  "topic": {
+    "S": "87A_rebate"
+  },
+  "explanation": {
+    "S": "Section 87A gives a rebate that can bring your tax down to zero, but the threshold is different in each regime: Old Regime -- taxable income up to Rs 5,00,000. New Regime -- taxable income up to Rs 12,00,000 (a much higher bar, one of the New Regime's main selling points). Important: this is a cliff, not a gradual phase-out. Go even Rs 1 over the threshold and the FULL tax applies from zero -- not just tax on the amount over the limit."
+  },
+  "keywords": {
+    "L": [
+      {
+        "S": "87a"
+      },
+      {
+        "S": "section 87a"
+      },
+      {
+        "S": "rebate"
+      },
+      {
+        "S": "tax rebate"
+      },
+      {
+        "S": "zero tax threshold"
+      },
+      {
+        "S": "12 lakh rebate"
+      },
+      {
+        "S": "5 lakh rebate"
+      }
+    ]
+  }
+}

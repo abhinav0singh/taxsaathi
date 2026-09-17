@@ -1,0 +1,33 @@
+{
+  "topic": {
+    "S": "new_vs_old_regime"
+  },
+  "explanation": {
+    "S": "Old Regime allows deductions like 80C and 80D but has a lower tax-free threshold (Rs 5L) and steeper slabs. New Regime allows no such deductions but has a much higher tax-free threshold (Rs 12L) and gentler slabs, and is the government's default unless you actively choose otherwise. For most salaried people without large deductions, New Regime tends to work out cheaper -- but it depends entirely on your actual numbers, which is exactly what this calculator works out for you rather than guessing."
+  },
+  "keywords": {
+    "L": [
+      {
+        "S": "old vs new"
+      },
+      {
+        "S": "which regime"
+      },
+      {
+        "S": "regime comparison"
+      },
+      {
+        "S": "old regime"
+      },
+      {
+        "S": "new regime"
+      },
+      {
+        "S": "which is better"
+      },
+      {
+        "S": "default regime"
+      }
+    ]
+  }
+}

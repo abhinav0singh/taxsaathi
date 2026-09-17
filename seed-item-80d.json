@@ -1,0 +1,27 @@
+{
+  "topic": {
+    "S": "80D"
+  },
+  "explanation": {
+    "S": "Section 80D lets you deduct health insurance premiums you've paid, only under the Old Tax Regime. Note: the real law caps this differently depending on your age and whose premium it is (yourself, family, senior citizen parents) -- this calculator currently treats whatever you enter as your deduction amount without enforcing a specific cap, so double-check your actual eligible limit against the current rules rather than assuming any number is automatically allowed."
+  },
+  "keywords": {
+    "L": [
+      {
+        "S": "80d"
+      },
+      {
+        "S": "section 80d"
+      },
+      {
+        "S": "80 d"
+      },
+      {
+        "S": "health insurance deduction"
+      },
+      {
+        "S": "medical insurance premium"
+      }
+    ]
+  }
+}

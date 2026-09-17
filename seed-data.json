@@ -1,0 +1,39 @@
+{
+  "_note": "Not deployed by SAM/CloudFormation -- IaC manages infrastructure, not data. Seed manually after `sam deploy`, once per item, using the put-item commands in README-seed.md. Keep this file as the source of truth for what's in the table.",
+
+  "80C": {
+    "topic": { "S": "80C" },
+    "explanation": { "S": "Section 80C lets you reduce your taxable income by up to Rs 1,50,000 per year -- but only if you choose the Old Tax Regime. It covers common investments and expenses: PPF, ELSS mutual funds, life insurance premiums, principal repayment on a home loan, and children's tuition fees, among others. The New Regime does not allow this deduction at all, which is a big part of why the two regimes can give very different results for the same income." },
+    "keywords": { "L": [
+      { "S": "80c" }, { "S": "section 80c" }, { "S": "80 c" }, { "S": "eighty c" },
+      { "S": "investment deduction" }, { "S": "elss" }, { "S": "ppf" }, { "S": "life insurance premium" }
+    ]}
+  },
+
+  "80D": {
+    "topic": { "S": "80D" },
+    "explanation": { "S": "Section 80D lets you deduct health insurance premiums you've paid, only under the Old Tax Regime. Note: the real law caps this differently depending on your age and whose premium it is (yourself, family, senior citizen parents) -- this calculator currently treats whatever you enter as your deduction amount without enforcing a specific cap, so double-check your actual eligible limit against the current rules rather than assuming any number is automatically allowed." },
+    "keywords": { "L": [
+      { "S": "80d" }, { "S": "section 80d" }, { "S": "80 d" },
+      { "S": "health insurance deduction" }, { "S": "medical insurance premium" }
+    ]}
+  },
+
+  "87A_rebate": {
+    "topic": { "S": "87A_rebate" },
+    "explanation": { "S": "Section 87A gives a rebate that can bring your tax down to zero, but the threshold is different in each regime: Old Regime -- taxable income up to Rs 5,00,000. New Regime -- taxable income up to Rs 12,00,000 (a much higher bar, one of the New Regime's main selling points). Important: this is a cliff, not a gradual phase-out. Go even Rs 1 over the threshold and the FULL tax applies from zero -- not just tax on the amount over the limit." },
+    "keywords": { "L": [
+      { "S": "87a" }, { "S": "section 87a" }, { "S": "rebate" }, { "S": "tax rebate" },
+      { "S": "zero tax threshold" }, { "S": "12 lakh rebate" }, { "S": "5 lakh rebate" }
+    ]}
+  },
+
+  "new_vs_old_regime": {
+    "topic": { "S": "new_vs_old_regime" },
+    "explanation": { "S": "Old Regime allows deductions like 80C and 80D but has a lower tax-free threshold (Rs 5L) and steeper slabs. New Regime allows no such deductions but has a much higher tax-free threshold (Rs 12L) and gentler slabs, and is the government's default unless you actively choose otherwise. For most salaried people without large deductions, New Regime tends to work out cheaper -- but it depends entirely on your actual numbers, which is exactly what this calculator works out for you rather than guessing." },
+    "keywords": { "L": [
+      { "S": "old vs new" }, { "S": "which regime" }, { "S": "regime comparison" },
+      { "S": "old regime" }, { "S": "new regime" }, { "S": "which is better" }, { "S": "default regime" }
+    ]}
+  }
+}
