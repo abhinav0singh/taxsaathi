@@ -1,5 +1,10 @@
 # TaxSaathi — System Design Document (SSD)
 
+**Revision note (v2):** Adds infra-as-code, scoped IAM roles, Bedrock
+fallback behavior, and the regime-optimization function. See PRD.md v2 for
+why. Sections marked **[NEW]** are additions; everything else is unchanged
+from the original design.
+
 ## 1. Architecture overview
 
 ```
@@ -14,65 +19,141 @@ API Gateway  (public HTTP endpoint, routes requests to Lambda)
     v
 Lambda functions (Node.js) — one per responsibility, see below
     |
-    +--> calculator logic (in-process, no external call — pure JS)
+    +--> calculator + optimizer logic (in-process, no external call)
     |
     +--> DynamoDB (curated tax explainer snippets — read-only lookup)
     |
     +--> Bedrock (LLM calls: free-text parsing, guided explanation)
+         with fallback behavior if the call fails or times out
 ```
+
+Deployed via **AWS SAM (Serverless Application Model)** — infra defined in
+a `template.yaml` file, not created by clicking through the console.
+**[NEW]**
 
 ## 2. Why each piece, and what it replaces
 
 | Piece | Why this, not the alternative |
 |---|---|
-| **Lambda** (not a long-running server / EC2) | We only need code to run in response to a request, briefly. A server would sit idle (and cost money) between requests. Lambda only runs — and only costs — when called. Tradeoff: "cold starts" (first call after idle is slower) — acceptable for a demo. |
-| **API Gateway** (in front of Lambda) | Lambda functions aren't directly reachable over HTTP by default. API Gateway is the piece that turns "an HTTP request from a browser" into "an invocation of a specific Lambda function," and handles routing, request validation, and CORS (letting our frontend's domain call this API from the browser). |
-| **DynamoDB** (not a SQL database) | Our explainer data is small, simple key-value lookups ("what is 80C" -> explanation text) with no complex joins or relational structure. DynamoDB is serverless (no database server to manage), scales automatically, and fits this simple access pattern better than standing up and managing a relational DB for a hackathon. |
-| **Bedrock** (not a hardcoded ruleset) | Two jobs need language understanding, not just rules: (1) parsing a user's free-text income description into structured fields — infinite ways to phrase "I freelance and made about 8 lakhs" — and (2) explaining tax concepts in context of the user's specific numbers, which benefits from natural phrasing rather than templated strings. A hardcoded parser would need to anticipate every phrasing; an LLM generalizes. |
-| **Amplify Hosting** (not S3 static website alone) | Amplify gives us CI/CD from a git repo (push to deploy), HTTPS, and a working URL with minimal manual config — faster to a working demo than manually configuring an S3 bucket + CloudFront for a static site. |
+| **Lambda** (not a long-running server / EC2) | Code runs only in response to a request, briefly. A server would sit idle (and cost money) between requests. Tradeoff: "cold starts" — acceptable for a demo. |
+| **API Gateway** (in front of Lambda) | Lambda isn't directly reachable over HTTP by default. API Gateway turns an HTTP request into a Lambda invocation, and handles routing, validation, and CORS. |
+| **DynamoDB** (not SQL) | Explainer data is small, simple key-value lookups with no joins. DynamoDB is serverless and fits this access pattern without managing a DB server. |
+| **Bedrock** (not a hardcoded ruleset) | Free-text income parsing and contextual explanation both need language understanding a rule-based parser can't generalize to. |
+| **Amplify Hosting** (not raw S3) | CI/CD from git, HTTPS, working URL with minimal config — faster to a working demo. |
+| **AWS SAM** (not manual console setup) **[NEW]** | SAM is a thin layer over CloudFormation purpose-built for serverless apps (Lambda/API Gateway/DynamoDB). Writing infra as a `template.yaml` file means: (1) it's reproducible — `sam deploy` recreates everything from scratch, provable to a judge or future employer; (2) it's diffable in git — infra changes show up in commit history same as code; (3) it forces you to declare permissions explicitly per-resource, which is what makes least-privilege IAM practical instead of "just attach AdministratorAccess and move on." Manual console clicking was the original plan purely for speed — this revision trades a small amount of time for a large signal-quality improvement. |
 
-## 3. Lambda function breakdown
+## 3. IAM: least-privilege execution roles **[NEW]**
 
-- `calculate` — wraps `calculator.js` directly. Input: income + deductions.
-  Output: full comparison object. No external calls — fast, deterministic.
-- `parseIncome` — takes free text, calls Bedrock, returns structured fields
-  (income amount, salaried vs freelance, existing deductions if mentioned).
-- `explain` — takes a user question + their calculated result, looks up
-  relevant snippet(s) from DynamoDB, calls Bedrock to phrase an answer
-  grounded in both the snippet and the user's numbers.
+The IAM *user* you created (Stage 1, `AdministratorAccess`) is what *you*
+log in as — broad access is a reasonable hackathon shortcut for a human
+operator working solo under time pressure, and we're keeping that as-is.
 
-## 4. Data model (DynamoDB)
+What changes: each **Lambda's execution role** — the permissions the
+*function itself* has when it runs — should be scoped to only what that
+function actually touches:
+
+- `calculate` Lambda: no AWS permissions needed beyond basic CloudWatch
+  logging (it's pure computation, no DynamoDB/Bedrock calls).
+- `explain` Lambda: DynamoDB read-only (`GetItem`/`Query` on the
+  `TaxExplainers` table only) + Bedrock `InvokeModel` only. Not write
+  access, not access to other tables, not admin.
+- `parseIncome` Lambda: Bedrock `InvokeModel` only.
+
+SAM makes this natural: each function's `template.yaml` entry declares its
+own `Policies`, scoped to the specific resource ARN it needs — you're not
+hand-writing IAM policy JSON from scratch.
+
+## 4. Lambda function breakdown
+
+- `calculate` — wraps `calculator.js` (now including the optimizer, see
+  section 6). Input: income + deductions. Output: full comparison +
+  optimization suggestion. No external calls — fast, deterministic.
+- `parseIncome` — free text → Bedrock → structured fields (income amount,
+  salaried vs freelance, existing deductions if mentioned).
+- `explain` — user question + their calculated result → DynamoDB snippet
+  lookup → Bedrock call to phrase a grounded answer using both the snippet
+  and the user's numbers (including their optimization suggestion, so the
+  explanation can be genuinely personalized, not generic).
+
+## 5. Bedrock fallback behavior **[NEW]**
+
+Both Bedrock-calling Lambdas (`parseIncome`, `explain`) must handle failure
+visibly rather than crash the request:
+
+- Wrap the Bedrock call in try/catch with a reasonable timeout.
+- On failure: `parseIncome` returns a clear "couldn't parse that, please
+  use the structured form instead" response (frontend falls back to manual
+  input fields). `explain` returns the raw DynamoDB snippet text directly,
+  unphrased by the LLM, rather than nothing.
+- This fallback path gets tested explicitly (see TEST_PLAN.md) and is
+  worth showing briefly in the demo video — it's a concrete signal of
+  engineering maturity, not just a safety net.
+
+## 6. Regime-optimization logic **[NEW]**
+
+New pure function(s) in `calculator.js`, alongside the existing
+`compareRegimes`. No AWS involved — same "pure function, unit tested
+standalone" pattern as the rest of the calculator.
+
+**What it computes**, given the user's current inputs:
+- If Old Regime is recommended but close to New Regime's result: how much
+  *more* 80C/80D investment would be needed to make New Regime better (or
+  vice versa) — i.e., the crossover point.
+- If the user is near the New Regime 87A rebate cliff-edge (12L / 12.75L
+  threshold): flag it explicitly, since crossing it by a small amount has
+  an outsized effect (see the rebate cliff-edge note already in
+  `calculator.js`).
+- Output is structured data (numbers + a short reason code), NOT prose —
+  prose phrasing of this data happens in the `explain` Lambda via Bedrock,
+  keeping the deterministic math and the language generation cleanly
+  separated (same separation-of-concerns principle as the rest of the
+  system: Bedrock never does math, the calculator never does language).
+
+This is the project's actual differentiator: a static calculator tells you
+a number, this tells you a lever you could pull and what it's worth.
+
+## 7. Data model (DynamoDB) — unchanged
 
 Single table, `TaxExplainers`:
 
 | Attribute | Type | Notes |
 |---|---|---|
 | `topic` (partition key) | String | e.g. `"80C"`, `"87A_rebate"`, `"new_vs_old_regime"` |
-| `explanation` | String | Plain-language explainer text, written by us ahead of time |
-| `keywords` | String list | Alternate phrasings, to help retrieval-lite matching |
+| `explanation` | String | Plain-language explainer text, written ahead of time |
+| `keywords` | String list | Alternate phrasings, for retrieval-lite matching |
 
-Retrieval-lite means: we do simple keyword matching against `keywords`, not
-vector embeddings / full RAG. Deliberate scope cut for hackathon time — a
-production version would use embeddings for more robust matching.
+## 8. Request flow example (end to end)
 
-## 5. Request flow example (end to end)
+1. User types free-text income description into frontend.
+2. Frontend → API Gateway → `parseIncome` Lambda → Bedrock → structured fields.
+   (If Bedrock fails: fallback to manual form, per section 5.)
+3. Frontend → API Gateway → `calculate` Lambda → `compareRegimes()` +
+   optimizer function → comparison + optimization suggestion.
+4. Frontend displays result + suggestion. User asks a follow-up question.
+5. Frontend → API Gateway → `explain` Lambda → DynamoDB snippet lookup →
+   Bedrock (snippet + user's numbers + optimization suggestion as context)
+   → grounded plain-language answer. (If Bedrock fails: raw snippet text
+   returned instead, per section 5.)
 
-1. User types "I'm a freelancer, made about 9 lakhs this year, no investments" into frontend.
-2. Frontend POSTs the text to API Gateway → `parseIncome` Lambda.
-3. `parseIncome` calls Bedrock, gets back `{income: 900000, salaried: false, deductions80c: 0}`.
-4. Frontend POSTs that structured data to API Gateway → `calculate` Lambda.
-5. `calculate` runs `compareRegimes()` (pure JS, no external calls), returns the comparison.
-6. Frontend displays the result. User asks "why is the new regime better for me?"
-7. Frontend POSTs the question + result to API Gateway → `explain` Lambda.
-8. `explain` looks up relevant DynamoDB snippet(s), calls Bedrock with the snippet + user's numbers as context, returns a grounded plain-language answer.
+## 9. Observability **[NEW]**
 
-## 6. What's a hackathon shortcut vs. "doing it properly"
+Lambda logs to CloudWatch automatically — no extra code needed. The only
+action item is to actually **open CloudWatch Logs during the demo video**
+(even a 5-second cut showing a real invocation log) — this is free signal
+that costs a screenshot, not engineering time.
+
+## 10. What's a hackathon shortcut vs. "doing it properly"
 
 | Shortcut here | Production version |
 |---|---|
-| IAM user with AdministratorAccess | Scoped least-privilege roles per Lambda |
+| IAM **user** with AdministratorAccess (human operator only) | Scoped human access too, via permission sets / SSO |
 | No auth/login | Cognito user pools, per-user history |
 | Retrieval-lite keyword match | Real vector search (e.g. OpenSearch, embeddings) |
 | Single DynamoDB table, hand-written data | Larger curated/maintained dataset, versioned |
-| No automated CI tests on deploy | CI pipeline running the test suite pre-deploy |
+| No automated CI tests on deploy | CI pipeline running the test suite pre-deploy, incl. `sam deploy` on merge |
 | Surcharge only handles first tier | Full surcharge tier logic + marginal relief |
+| Optimizer suggests one lever at a time | Multi-variable optimization across several deduction types at once |
+
+Note: Lambda **execution roles** are now scoped per section 3 — that's no
+longer in the "shortcut" column, it's treated as correct-by-default even
+under time pressure, since SAM makes it roughly free to do right.

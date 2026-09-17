@@ -1,5 +1,8 @@
 # TaxSaathi — Test Plan
 
+**Revision note (v2):** Adds tests for the optimizer function, Bedrock
+fallback paths, and IAM role scoping verification, per SSD.md v2.
+
 Principle: each stage gets tests before we move to the next, so bugs are
 caught where they're cheap to fix, not after everything's wired together.
 
@@ -19,53 +22,89 @@ Covers:
 Still missing (add if time allows):
 - [ ] Boundary values exactly AT slab edges (e.g. exactly 400000, 1200000)
 - [ ] Income of 0 / negative input handling
-- [ ] Surcharge >50L case (currently untested — add before demo if we
-      want to claim surcharge support in the writeup)
+- [ ] Surcharge >50L case (currently untested)
 
-## 2. Lambda + API Gateway (`calculate` function)
+## 2. Optimizer function (`calculator.js` additions) — NEW STAGE
 
-- [ ] Direct Lambda invoke (AWS console "Test" feature) with sample JSON
-      input returns expected calculator output — proves the Lambda wrapper
-      itself doesn't corrupt the calculator's output.
-- [ ] `curl` or Postman request to the deployed API Gateway URL returns
-      the same result — proves routing + permissions are correct end to end.
+- [ ] Crossover case: user near the point where more 80C investment flips
+      the recommendation -> function returns the correct additional amount
+      needed, verified against manual calculation.
+- [ ] Rebate cliff-edge case: user just above 12L/12.75L threshold ->
+      function flags proximity to the cliff, with correct distance.
+- [ ] User far from any crossover/cliff -> function returns "no notable
+      lever" rather than a forced/misleading suggestion.
+- [ ] Output is structured data (numbers + reason code), not prose —
+      confirm no hardcoded English strings leaking into this layer
+      (keeps math/language separation clean per SSD.md section 6).
+
+## 3. Lambda + API Gateway (`calculate` function), via SAM
+
+- [ ] `sam build` and `sam deploy` complete without errors.
+- [ ] `sam local invoke` (local test, before deploying) with sample JSON
+      input returns expected calculator + optimizer output.
+- [ ] Deployed API Gateway URL, tested via curl/Postman, returns the same
+      result — proves routing + permissions correct end to end.
 - [ ] Malformed input (missing income field) returns a clear error, not a
-      500 crash — basic input validation.
-- [ ] CORS headers present — confirmed by testing from an actual browser
-      page (not just curl), since CORS is a browser-enforced restriction.
+      500 crash.
+- [ ] CORS headers present, confirmed from an actual browser page.
+- [ ] **IAM check:** open the `calculate` Lambda's execution role in the
+      console and confirm it does NOT have DynamoDB/Bedrock permissions
+      it doesn't need (per SSD.md section 3) — this function should only
+      need basic logging permissions.
 
-## 3. DynamoDB
+## 4. DynamoDB
 
-- [ ] Table created, sample items inserted for at least: 80C, 80D, 87A
-      rebate (both regimes), old vs new regime overview.
+- [ ] Table created via SAM template (not console), sample items inserted
+      for at least: 80C, 80D, 87A rebate (both regimes), old vs new
+      regime overview.
 - [ ] `explain` Lambda's keyword lookup returns the right item for a few
       test phrasings (e.g. "what's 80c" and "section 80 c" both match).
+- [ ] **IAM check:** confirm the `explain` Lambda's execution role has
+      DynamoDB read-only access (Query/GetItem), not write/admin access.
 
-## 4. Bedrock
+## 5. Bedrock
 
 - [ ] `parseIncome`: known test phrases (at least 5, varying how income
       is described) produce correctly structured output. Log failures —
-      LLM output isn't 100% deterministic, so check this isn't a single
+      LLM output isn't 100% deterministic, check this isn't a single
       lucky run.
-- [ ] `explain`: given a snippet + a sample calculated result, output is
-      grounded (doesn't contradict the snippet or invent numbers not in
-      the user's result).
-- [ ] Fallback tested: if Bedrock call fails/times out, the app degrades
-      gracefully (e.g. shows the raw explainer text without LLM polish)
-      rather than crashing the whole flow.
+- [ ] `explain`: given a snippet + a sample calculated result + optimizer
+      output, response is grounded (doesn't contradict the snippet or
+      invent numbers not in the user's result).
+- [ ] **Fallback test — parseIncome:** simulate a Bedrock failure/timeout
+      (e.g. temporarily break the call) and confirm the frontend correctly
+      falls back to the manual structured-input form, per SSD.md section 5.
+- [ ] **Fallback test — explain:** simulate a Bedrock failure and confirm
+      the raw DynamoDB snippet text is returned instead of a crash or
+      empty response.
+- [ ] **IAM check:** confirm both Bedrock-calling Lambdas' execution roles
+      only have `bedrock:InvokeModel`, not broader Bedrock permissions.
 
-## 5. Frontend
+## 6. Frontend
 
-- [ ] Full manual flow: enter income -> see comparison -> ask a question
-      -> see an answer, with no console errors.
+- [ ] Full manual flow: enter income -> see comparison + optimization
+      suggestion -> ask a question -> see an answer, with no console errors.
 - [ ] Mobile-width check (judges may view on phone) — layout doesn't break.
-- [ ] Test on a completely fresh browser profile / incognito, to catch
-      any "works on my machine because I'm logged into AWS" issues.
+- [ ] Test on a completely fresh browser profile / incognito.
+- [ ] Optimization suggestion is visually distinct/clear, not buried —
+      this is the project's differentiator, it should be easy to notice.
 
-## 6. End-to-end / demo readiness
+## 7. Infra-as-code sanity check — NEW
+
+- [ ] `template.yaml` exists in the repo and `sam deploy` can recreate the
+      stack from scratch (test this once, ideally on a clean account state
+      or at minimum by deleting and redeploying the stack).
+- [ ] Repo README or writeup explicitly mentions IaC usage — this needs to
+      be stated for a judge/reviewer to notice it, not just be true.
+
+## 8. End-to-end / demo readiness
 
 - [ ] Full flow works on the deployed URL, not just localhost.
-- [ ] At least one full run recorded as backup, in case live demo recording
-      hits a flaky network moment.
+- [ ] At least one full run recorded as backup.
 - [ ] Someone who hasn't seen the project before can use it without
-      explanation (quick sanity check that it's actually plain-language).
+      explanation.
+- [ ] Demo video includes: the optimization suggestion feature clearly
+      shown, one visible failure-handling moment (fallback path), and a
+      brief CloudWatch Logs cut (per SSD.md section 9).
+- [ ] Writeup explicitly separates hackathon shortcuts from production
+      considerations (per SSD.md section 10).
