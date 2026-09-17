@@ -95,22 +95,49 @@ New pure function(s) in `calculator.js`, alongside the existing
 `compareRegimes`. No AWS involved — same "pure function, unit tested
 standalone" pattern as the rest of the calculator.
 
+**Revision (v2.1):** The original design included a cross-regime "crossover
+lever" — how much more 80C/80D investment would flip the recommendation
+from Old to New Regime or vice versa. Verified against the actual slab
+numbers and dropped: once income crosses the New Regime rebate threshold,
+New Regime's slabs are structurally so much gentler than Old's that no
+realistic 80C/80D amount (capped near ₹2L combined) ever closes the gap —
+the lever would return "no lever" for nearly every real input, making it a
+dead feature rather than a differentiator. Replaced with two levers that
+are meaningful for realistic inputs in both regimes.
+
 **What it computes**, given the user's current inputs:
-- If Old Regime is recommended but close to New Regime's result: how much
-  *more* 80C/80D investment would be needed to make New Regime better (or
-  vice versa) — i.e., the crossover point.
-- If the user is near the New Regime 87A rebate cliff-edge (12L / 12.75L
-  threshold): flag it explicitly, since crossing it by a small amount has
-  an outsized effect (see the rebate cliff-edge note already in
+- **`analyzeRebateCliffEdge`** — rebate cliff-edge proximity (kept, verified
+  real): if the user is near the New Regime 87A rebate cliff-edge (₹12L /
+  ₹12.75L threshold), flag it explicitly — crossing it by a small amount
+  has an outsized effect (a ₹1 increase in income can add tens of
+  thousands in tax; see the rebate cliff-edge note already in
   `calculator.js`).
-- Output is structured data (numbers + a short reason code), NOT prose —
-  prose phrasing of this data happens in the `explain` Lambda via Bedrock,
-  keeping the deterministic math and the language generation cleanly
-  separated (same separation-of-concerns principle as the rest of the
-  system: Bedrock never does math, the calculator never does language).
+- **`analyzeDeductionHeadroom`** — within-regime marginal savings (new):
+  given whichever regime is currently recommended, compute how much tax
+  would be saved by maxing remaining unused 80C/80D room. Caveat: its
+  positive-savings branch (Old Regime recommended and headroom exists) is
+  functionally unreachable through real income inputs run via
+  `compareRegimes()`, per the v2.1 finding — Old is essentially never the
+  actual recommended regime. That branch is still correct code and worth
+  keeping (decoupled from `compareRegimes` by taking `recommendedRegime`
+  as a direct parameter, so it's not dead code, just rarely-fired code),
+  but it's tested by passing `recommendedRegime: "old"` directly rather
+  than deriving it from a real calculation — know that going in so it's
+  not mistaken for a test gap.
+- **`analyzeSlabBoundary`** — distance to next slab boundary (new, optional
+  if time-constrained): how much additional income would push the user
+  into the next slab, so they can see the shape of their own marginal
+  rate — useful context, not a "lever" the user directly pulls, but cheap
+  to compute from data `computeSlabTax` already touches.
+- Output remains structured data (numbers + a short reason code), NOT
+  prose — prose phrasing happens in the `explain` Lambda via Bedrock,
+  keeping deterministic math and language generation cleanly separated
+  (Bedrock never does math, the calculator never does language).
 
 This is the project's actual differentiator: a static calculator tells you
-a number, this tells you a lever you could pull and what it's worth.
+a number, this tells you a lever you could pull and what it's worth —
+scoped now to levers that actually move for realistic inputs, not ones
+that were only theoretically possible.
 
 ## 7. Data model (DynamoDB) — unchanged
 
