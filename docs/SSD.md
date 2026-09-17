@@ -105,11 +105,15 @@ the lever would return "no lever" for nearly every real input, making it a
 dead feature rather than a differentiator. Replaced with two levers that
 are meaningful for realistic inputs in both regimes.
 
+**Verified (v2.2):** Pulled and ran the actual code from the repo directly
+— 34/34 tests pass. Correcting function names guessed in the v2.1 note
+above against ground truth:
+
 **What it computes**, given the user's current inputs:
-- **`analyzeRebateCliffEdge`** — rebate cliff-edge proximity (kept, verified
-  real): if the user is near the New Regime 87A rebate cliff-edge (₹12L /
-  ₹12.75L threshold), flag it explicitly — crossing it by a small amount
-  has an outsized effect (a ₹1 increase in income can add tens of
+- **`checkRebateCliffProximity`** — rebate cliff-edge proximity (kept,
+  verified real): if the user is near the New Regime 87A rebate cliff-edge
+  (₹12L / ₹12.75L threshold), flag it explicitly — crossing it by a small
+  amount has an outsized effect (a ₹1 increase in income can add tens of
   thousands in tax; see the rebate cliff-edge note already in
   `calculator.js`).
 - **`analyzeDeductionHeadroom`** — within-regime marginal savings (new):
@@ -124,11 +128,16 @@ are meaningful for realistic inputs in both regimes.
   but it's tested by passing `recommendedRegime: "old"` directly rather
   than deriving it from a real calculation — know that going in so it's
   not mistaken for a test gap.
-- **`analyzeSlabBoundary`** — distance to next slab boundary (new, optional
-  if time-constrained): how much additional income would push the user
-  into the next slab, so they can see the shape of their own marginal
-  rate — useful context, not a "lever" the user directly pulls, but cheap
-  to compute from data `computeSlabTax` already touches.
+- **`analyzeSlabBoundary`** (built on a `findSlabBoundaryDistance` helper)
+  — distance to next slab boundary: how much additional income would push
+  the user into the next slab, so they can see the shape of their own
+  marginal rate — useful context, cheap to compute from data
+  `computeSlabTax` already touches.
+- **`analyzeOptimization`** — combines the above three with
+  `compareRegimes()`'s result into one structured object. Per its own
+  code comment, this is the function the `calculate` Lambda should call
+  directly (see section 4) — it's the single entry point for everything
+  this stage produces.
 - Output remains structured data (numbers + a short reason code), NOT
   prose — prose phrasing happens in the `explain` Lambda via Bedrock,
   keeping deterministic math and language generation cleanly separated
