@@ -65,9 +65,11 @@ hand-writing IAM policy JSON from scratch.
 
 ## 4. Lambda function breakdown
 
-- `calculate` — wraps `calculator.js` (now including the optimizer, see
-  section 6). Input: income + deductions. Output: full comparison +
-  optimization suggestion. No external calls — fast, deterministic.
+- `calculate` — wraps `calculator.js`, calling `analyzeOptimization()`
+  specifically (per its own code comment, that's the intended single entry
+  point — it internally calls `compareRegimes()` plus all three optimizer
+  functions). Input: income + deductions. Output: full comparison +
+  optimization suggestions. No external calls — fast, deterministic.
 - `parseIncome` — free text → Bedrock → structured fields (income amount,
   salaried vs freelance, existing deductions if mentioned).
 - `explain` — user question + their calculated result → DynamoDB snippet
