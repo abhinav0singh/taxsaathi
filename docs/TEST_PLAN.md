@@ -24,15 +24,28 @@ Still missing (add if time allows):
 - [ ] Income of 0 / negative input handling
 - [ ] Surcharge >50L case (currently untested)
 
-## 2. Optimizer function (`calculator.js` additions) — NEW STAGE
+## 2. Optimizer functions (`calculator.js` additions) — DONE per other-chat report, verify locally
 
-- [ ] Crossover case: user near the point where more 80C investment flips
-      the recommendation -> function returns the correct additional amount
-      needed, verified against manual calculation.
-- [ ] Rebate cliff-edge case: user just above 12L/12.75L threshold ->
+Per SSD.md v2.1: crossover lever was dropped (structurally unreachable for
+real inputs), replaced with rebate cliff-edge detection and within-regime
+deduction headroom. Re-run `node calculator/test_calculator.js` on your own
+machine to confirm these pass locally, not just in the other chat's sandbox.
+
+- [ ] Rebate cliff-edge case: user just above ₹12L/₹12.75L threshold ->
       function flags proximity to the cliff, with correct distance.
-- [ ] User far from any crossover/cliff -> function returns "no notable
-      lever" rather than a forced/misleading suggestion.
+- [ ] Deduction headroom, New Regime recommended (the common real case):
+      confirm function correctly returns "no headroom lever" rather than a
+      forced suggestion, since New Regime's own deduction room doesn't
+      work the same way as Old's 80C/80D.
+- [ ] Deduction headroom, Old Regime recommended (rare in practice — per
+      SSD.md v2.1, this branch is tested via direct `recommendedRegime`
+      parameter injection, not through a real `compareRegimes()` result,
+      since no realistic income actually produces Old as the winner under
+      this calculator's scope. This is a deliberate, documented test
+      method — not a coverage gap. Confirm the test file itself notes this,
+      so a future reader doesn't mistake it for an oversight.
+- [ ] Slab boundary distance: confirm correct "₹X away, rate goes from Y%
+      to Z%" output at a mid-slab income point.
 - [ ] Output is structured data (numbers + reason code), not prose —
       confirm no hardcoded English strings leaking into this layer
       (keeps math/language separation clean per SSD.md section 6).
