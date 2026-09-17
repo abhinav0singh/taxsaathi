@@ -1,0 +1,10 @@
+{
+  "name": "taxsaathi-parse-income",
+  "version": "1.0.0",
+  "description": "TaxSaathi parseIncome Lambda - free text to structured income via Bedrock",
+  "main": "app.js",
+  "files": ["app.js"],
+  "dependencies": {
+    "@aws-sdk/client-bedrock-runtime": "^3.658.0"
+  }
+}

@@ -1,0 +1,12 @@
+{
+  "name": "taxsaathi-explain",
+  "version": "1.0.0",
+  "description": "TaxSaathi explain Lambda - DynamoDB explainer lookup + Bedrock phrasing",
+  "main": "app.js",
+  "files": ["app.js"],
+  "dependencies": {
+    "@aws-sdk/client-dynamodb": "^3.658.0",
+    "@aws-sdk/util-dynamodb": "^3.658.0",
+    "@aws-sdk/client-bedrock-runtime": "^3.658.0"
+  }
+}

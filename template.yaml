@@ -1,6 +1,15 @@
 AWSTemplateFormatVersion: '2010-09-09'
 Transform: AWS::Serverless-2016-10-31
-Description: TaxSaathi - calculate Lambda + HTTP API (SAM)
+Description: TaxSaathi - calculate/parseIncome/explain Lambdas + HTTP API + DynamoDB (SAM)
+
+Parameters:
+  BedrockModelId:
+    Type: String
+    Description: >-
+      Bedrock foundation model ID to invoke (e.g. an Anthropic Claude model
+      ID). VERIFY the exact current ID in the Bedrock console's Model
+      catalog for ap-south-1 before deploying -- not hardcoded on purpose,
+      since this can't be confirmed from outside your AWS account.
 
 Globals:
   Function:
@@ -53,22 +62,58 @@ Resources:
       FunctionName: taxsaathi-explain
       CodeUri: lambda-explain/
       Handler: app.handler
+      Timeout: 15   # Bedrock calls take longer than a pure computation -- override the 10s Global default
       Environment:
         Variables:
           TABLE_NAME: !Ref TaxExplainersTable
-      # DynamoDBReadPolicy is a SAM Policy Template -- a named, pre-built
-      # least-privilege IAM policy shape (GetItem/Query/Scan/BatchGetItem
-      # on exactly the table you name, nothing else -- no write access, no
-      # other tables). This is what SSD.md section 3 means by "SAM makes
-      # this natural" -- you name the shape, SAM writes the IAM JSON.
+          BEDROCK_MODEL_ID: !Ref BedrockModelId
       Policies:
+        # DynamoDBReadPolicy is a SAM Policy Template -- a named, pre-built
+        # least-privilege IAM policy shape (GetItem/Query/Scan/BatchGetItem
+        # on exactly the table you name, nothing else -- no write access,
+        # no other tables). This is what SSD.md section 3 means by "SAM
+        # makes this natural" -- you name the shape, SAM writes the IAM JSON.
         - DynamoDBReadPolicy:
             TableName: !Ref TaxExplainersTable
+        # No SAM Policy Template exists for Bedrock as of this template, so
+        # this is a hand-written inline statement instead -- scoped to
+        # exactly one action (InvokeModel, not ListFoundationModels or
+        # anything else) on exactly one model ARN (not "*"), per SSD.md
+        # section 3's "InvokeModel only" requirement.
+        - Statement:
+            - Effect: Allow
+              Action: bedrock:InvokeModel
+              Resource: !Sub "arn:aws:bedrock:${AWS::Region}::foundation-model/${BedrockModelId}"
       Events:
         ExplainApi:
           Type: HttpApi
           Properties:
             Path: /explain
+            Method: POST
+
+  ParseIncomeFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: taxsaathi-parse-income
+      CodeUri: lambda-parse-income/
+      Handler: app.handler
+      Timeout: 15   # same reasoning as ExplainFunction -- Bedrock latency
+      Environment:
+        Variables:
+          BEDROCK_MODEL_ID: !Ref BedrockModelId
+      Policies:
+        # Same scoping as ExplainFunction above: InvokeModel only, one
+        # model ARN only -- no DynamoDB access, since this function never
+        # touches the table.
+        - Statement:
+            - Effect: Allow
+              Action: bedrock:InvokeModel
+              Resource: !Sub "arn:aws:bedrock:${AWS::Region}::foundation-model/${BedrockModelId}"
+      Events:
+        ParseIncomeApi:
+          Type: HttpApi
+          Properties:
+            Path: /parseIncome
             Method: POST
 
 Outputs:
@@ -78,6 +123,9 @@ Outputs:
   ExplainApiUrl:
     Description: Invoke URL for POST /explain
     Value: !Sub "https://${ServerlessHttpApi}.execute-api.${AWS::Region}.amazonaws.com/explain"
+  ParseIncomeApiUrl:
+    Description: Invoke URL for POST /parseIncome
+    Value: !Sub "https://${ServerlessHttpApi}.execute-api.${AWS::Region}.amazonaws.com/parseIncome"
   TaxExplainersTableName:
     Description: DynamoDB table name, for the seed script
     Value: !Ref TaxExplainersTable
