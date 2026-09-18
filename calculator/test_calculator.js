@@ -13,6 +13,8 @@ const {
   checkRebateCliffProximity,
   analyzeDeductionHeadroom,
   analyzeSlabBoundary,
+  compareAcrossYears,
+  computeRateSummary,
   analyzeOptimization,
 } = require("./calculator");
 
@@ -165,6 +167,46 @@ checkBool(
 checkBool(
   "Output check: rebateCliffEdge.reasonCode is a reason code, not prose",
   /^[A-Z0-9_]+$/.test(opt.rebateCliffEdge.reasonCode),
+  true
+);
+
+/**
+ * Historical comparison (FY2024-25 New Regime vs today) and rate summary.
+ * FY2024-25 numbers verified against public Budget 2024 coverage before
+ * being hardcoded here -- see calculator.js's constants block for sources.
+ */
+
+// 9L salaried: FY2024-25 rebate threshold (7L) is missed, today's (12L) is not.
+// Hand math: FY24-25 taxable=825000, slab tax=32500, no rebate, cess 1300 -> 33800
+//            Today: taxable=825000, slab tax=22500, rebate applies -> 0
+let hist = compareAcrossYears(900000, true);
+check("Historical: FY2024-25 tax on 9L salaried", hist.fy2024_25FinalTax, 33800);
+check("Historical: today's tax on same 9L salaried", hist.currentFinalTax, 0);
+check("Historical: savings from reform on 9L salaried", hist.savingsFromReform, 33800);
+checkStr("Historical: reason code on clear savings case", hist.reasonCode, "REFORM_SAVED_YOU_MONEY");
+
+// Very low income: both years should show 0 either way (no reform effect to detect)
+hist = compareAcrossYears(300000, true);
+checkStr("Historical: no difference at very low income", hist.reasonCode, "NO_DIFFERENCE");
+
+// Rate summary: 15L freelancer, verified in Stage 2 to owe 109200 under New Regime,
+// taxable=1500000 sits in the 12L-16L slab (15% marginal). Exercised through
+// analyzeOptimization (the real, deployed code path) rather than calling
+// computeRateSummary directly, since NEW_REGIME_SLABS isn't exported.
+const optForRates = analyzeOptimization(1500000, false);
+check("Rate summary: marginal rate at 15L freelancer", optForRates.rateSummary.marginalRatePercent, 15, 0);
+check("Rate summary: effective rate at 15L freelancer", optForRates.rateSummary.effectiveRatePercent, 7.28, 0.01);
+
+// Output shape check: analyzeOptimization now includes both new fields
+const optShape = analyzeOptimization(900000, true);
+checkBool(
+  "Output check: analyzeOptimization includes historicalComparison",
+  typeof optShape.historicalComparison === "object" && optShape.historicalComparison !== null,
+  true
+);
+checkBool(
+  "Output check: analyzeOptimization includes rateSummary",
+  typeof optShape.rateSummary === "object" && optShape.rateSummary !== null,
   true
 );
 

@@ -352,6 +352,99 @@ function checkRebateCliffProximity(grossIncome, isSalaried = true) {
   };
 }
 
+// ---------------------------------------------------------------------------
+// Historical comparison — FY2024-25 New Regime, for "then vs now" framing
+// ---------------------------------------------------------------------------
+// Verified against public sources (Budget 2024 coverage) before adding.
+// Deliberately backward-looking only, not tax planning -- this illustrates
+// how much the FY2026-27 reform changed things for the SAME income, it does
+// not advise the user on anything. See docs/PRD.md non-goals for why this
+// distinction matters: forward-looking multi-year planning stays out of
+// scope, this does not cross that line.
+
+const FY2024_25_NEW_REGIME_SLABS = [
+  [0, 300000, 0.00],
+  [300000, 700000, 0.05],
+  [700000, 1000000, 0.10],
+  [1000000, 1200000, 0.15],
+  [1200000, 1500000, 0.20],
+  [1500000, null, 0.30],
+];
+const FY2024_25_REBATE_THRESHOLD = 700000;   // vs 1,200,000 today -- this is the headline number
+const FY2024_25_STANDARD_DEDUCTION = 75000;  // unchanged from today, confirmed via search
+
+/**
+ * Generalized version of calculateNewRegime, parameterized by year config,
+ * so old years can be computed without duplicating rebate/surcharge/cess
+ * logic. calculateNewRegime() itself is untouched -- this is intentionally
+ * a separate function, not a refactor of the already-verified one, to
+ * avoid any risk of regressing tested behavior under time pressure.
+ */
+function calculateNewRegimeForYear(grossIncome, isSalaried, slabs, rebateThreshold, standardDeduction) {
+  const stdDed = isSalaried ? standardDeduction : 0;
+  const taxableIncome = Math.max(0, grossIncome - stdDed);
+
+  const slabTax = computeSlabTax(taxableIncome, slabs);
+  const taxAfterRebate = taxableIncome <= rebateThreshold ? 0 : slabTax;
+  const surcharge = applySurcharge(taxAfterRebate, taxableIncome);
+  const cess = applyCess(taxAfterRebate + surcharge);
+  const finalTax = taxAfterRebate + surcharge + cess;
+
+  return { taxableIncome, slabTax: round2(slabTax), finalTax: round2(finalTax) };
+}
+
+/**
+ * "Then vs now": same gross income, FY2024-25 New Regime rules vs today's.
+ * Purely illustrative -- reveals the real effect of the FY2026-27 reform
+ * (rebate threshold jumped from 7L to 12L) rather than recommending
+ * anything. No new user inputs required.
+ */
+function compareAcrossYears(grossIncome, isSalaried = true) {
+  const current = calculateNewRegime(grossIncome, isSalaried);
+  const fy2024_25 = calculateNewRegimeForYear(
+    grossIncome, isSalaried, FY2024_25_NEW_REGIME_SLABS, FY2024_25_REBATE_THRESHOLD, FY2024_25_STANDARD_DEDUCTION
+  );
+  const savingsFromReform = round2(fy2024_25.finalTax - current.finalTax);
+
+  let reasonCode;
+  if (savingsFromReform > 0) reasonCode = "REFORM_SAVED_YOU_MONEY";
+  else if (savingsFromReform < 0) reasonCode = "OLDER_RULES_WERE_CHEAPER";
+  else reasonCode = "NO_DIFFERENCE";
+
+  return {
+    currentFinalTax: current.finalTax,
+    fy2024_25FinalTax: fy2024_25.finalTax,
+    savingsFromReform,
+    reasonCode,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Effective vs marginal rate -- cheap, always-computable context
+// ---------------------------------------------------------------------------
+
+function findMarginalRate(taxableIncome, slabs) {
+  if (taxableIncome <= 0) return 0;
+  let rate = 0;
+  for (const [lower, , r] of slabs) {
+    if (taxableIncome > lower) rate = r;
+    else break;
+  }
+  return rate;
+}
+
+/**
+ * Effective rate = actual tax as a % of gross income (usually well below
+ * the top marginal rate -- a genuinely useful, often-surprising number for
+ * a first-time filer). Marginal rate = the rate applied to their next
+ * rupee, computed from whichever regime is currently recommended.
+ */
+function computeRateSummary(grossIncome, taxableIncome, finalTax, slabs) {
+  const effectiveRatePercent = grossIncome > 0 ? round2((finalTax / grossIncome) * 100) : 0;
+  const marginalRatePercent = round2(findMarginalRate(taxableIncome, slabs) * 100);
+  return { effectiveRatePercent, marginalRatePercent };
+}
+
 /**
  * Combines the full regime comparison with all optimizer signals into one
  * structured result — this is what the `calculate` Lambda returns directly
@@ -365,6 +458,16 @@ function analyzeOptimization(grossIncome, isSalaried = true, deductions80c = 0, 
   const rebateCliffEdge = checkRebateCliffProximity(grossIncome, isSalaried);
   const deductionHeadroom = analyzeDeductionHeadroom(grossIncome, deductions80c, deductions80d, comparison.recommended);
   const slabBoundary = analyzeSlabBoundary(grossIncome, isSalaried, deductions80c, deductions80d, comparison.recommended);
+  const historicalComparison = compareAcrossYears(grossIncome, isSalaried);
+
+  const recommendedSlabs = comparison.recommended === "new" ? NEW_REGIME_SLABS : OLD_REGIME_SLABS;
+  const recommendedTaxableIncome = comparison.recommended === "new"
+    ? comparison.newRegime.taxableIncome
+    : comparison.oldRegime.taxableIncome;
+  const recommendedFinalTax = comparison.recommended === "new"
+    ? comparison.newRegime.finalTax
+    : comparison.oldRegime.finalTax;
+  const rateSummary = computeRateSummary(grossIncome, recommendedTaxableIncome, recommendedFinalTax, recommendedSlabs);
 
   return {
     comparison,
@@ -372,6 +475,8 @@ function analyzeOptimization(grossIncome, isSalaried = true, deductions80c = 0, 
     rebateCliffEdge,
     deductionHeadroom,
     slabBoundary,
+    historicalComparison,
+    rateSummary,
   };
 }
 
@@ -388,5 +493,7 @@ module.exports = {
   analyzeDeductionHeadroom,
   findSlabBoundaryDistance,
   analyzeSlabBoundary,
+  compareAcrossYears,
+  computeRateSummary,
   analyzeOptimization,
 };
