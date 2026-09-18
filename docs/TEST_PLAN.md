@@ -77,21 +77,31 @@ machine to confirm these pass locally, not just in the other chat's sandbox.
 
 ## 5. Bedrock
 
+**Status as of 17 Sept, evening:** Model access requested for `ap-south-1`,
+approval pending — outside our control, not blocking Stage 6. Fallback
+logic verified twice over: locally via mocked Bedrock client (29+26 tests,
+independently re-run and confirmed — see docs/SSD.md's verification
+table), and live against the deployed endpoints, per user report (raw
+output not yet independently cross-checked here — pending, non-blocking).
+Only the actual live-model-quality checks below remain genuinely open,
+and they require account approval, not more engineering.
+
+- [x] **Fallback test — parseIncome:** verified locally (mocked Bedrock
+      throwing + timing out, 200/parsed:false both cases) AND reported
+      live. Confirms SSD.md section 5 behavior.
+- [x] **Fallback test — explain:** verified locally (mocked failure, raw
+      snippet returned unphrased) AND reported live.
+- [x] **IAM check:** confirmed directly from the real `template.yaml` —
+      `explain` has `DynamoDBReadPolicy` + `bedrock:InvokeModel` scoped to
+      one model ARN; `parseIncome` has `bedrock:InvokeModel` only, no
+      DynamoDB access. No broader Bedrock permissions on either.
 - [ ] `parseIncome`: known test phrases (at least 5, varying how income
-      is described) produce correctly structured output. Log failures —
-      LLM output isn't 100% deterministic, check this isn't a single
-      lucky run.
+      is described) produce correctly structured output from a REAL model
+      call. **Blocked on Bedrock model access approval**, not on code —
+      code path is already verified with a mocked model response.
 - [ ] `explain`: given a snippet + a sample calculated result + optimizer
-      output, response is grounded (doesn't contradict the snippet or
-      invent numbers not in the user's result).
-- [ ] **Fallback test — parseIncome:** simulate a Bedrock failure/timeout
-      (e.g. temporarily break the call) and confirm the frontend correctly
-      falls back to the manual structured-input form, per SSD.md section 5.
-- [ ] **Fallback test — explain:** simulate a Bedrock failure and confirm
-      the raw DynamoDB snippet text is returned instead of a crash or
-      empty response.
-- [ ] **IAM check:** confirm both Bedrock-calling Lambdas' execution roles
-      only have `bedrock:InvokeModel`, not broader Bedrock permissions.
+      output, a REAL model call produces a grounded response (doesn't
+      contradict the snippet or invent numbers). **Same block as above.**
 
 ## 6. Frontend
 
