@@ -1,7 +1,7 @@
 {
   "name": "taxsaathi-parse-income",
   "version": "1.0.0",
-  "description": "TaxSaathi parseIncome Lambda - free text to structured income via Bedrock",
+  "description": "TaxSaathi parseIncome Lambda - free text to structured income via Bedrock Converse (Nova Lite)",
   "main": "app.js",
   "files": ["app.js"],
   "dependencies": {

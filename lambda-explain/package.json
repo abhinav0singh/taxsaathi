@@ -1,7 +1,7 @@
 {
   "name": "taxsaathi-explain",
   "version": "1.0.0",
-  "description": "TaxSaathi explain Lambda - DynamoDB explainer lookup + Bedrock phrasing",
+  "description": "TaxSaathi explain Lambda - DynamoDB lookup + Bedrock Converse phrasing (Nova Lite)",
   "main": "app.js",
   "files": ["app.js"],
   "dependencies": {

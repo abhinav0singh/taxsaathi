@@ -1,22 +1,24 @@
 // Handler for POST /parseIncome — free text -> Bedrock -> structured fields
-// matching what the `calculate` Lambda expects as input. Per SSD.md section
-// 5 (PRD.md v2 goal 5: not optional), on ANY Bedrock failure or timeout,
-// this returns a clear "couldn't parse" response rather than crashing —
-// the frontend is expected to fall back to the manual structured form.
+// matching what the `calculate` Lambda expects as input.
+//
+// UPDATED: now calls Bedrock via the Converse API (ConverseCommand) instead
+// of raw InvokeModel with an Anthropic-specific request body. Converse is a
+// stable, model-agnostic shape -- switching models (this change: Claude ->
+// Nova Lite, to route around pending Bedrock model-access approval) means
+// changing BEDROCK_MODEL_ID only, not rewriting request/response parsing.
+//
+// Fallback behavior (SSD.md section 5, PRD.md v2 goal 5) is UNCHANGED: on
+// ANY Bedrock failure or timeout, returns a clear "couldn't parse" response
+// rather than crashing.
 
-const { BedrockRuntimeClient, InvokeModelCommand } = require('@aws-sdk/client-bedrock-runtime');
+const { BedrockRuntimeClient, ConverseCommand } = require('@aws-sdk/client-bedrock-runtime');
 
 const MODEL_ID = process.env.BEDROCK_MODEL_ID;
 const BEDROCK_TIMEOUT_MS = 8000;
 
 const client = new BedrockRuntimeClient({});
 
-/**
- * Builds the extraction prompt. Pure function -- testable without AWS.
- * Asks for JSON only, gives an explicit schema, and gives the model an
- * explicit escape hatch ({"error": ...}) for genuinely unparseable text,
- * so "I can't tell" produces a clean signal instead of a hallucinated guess.
- */
+/** Builds the extraction prompt. Pure function -- unchanged from the Claude version. */
 function buildPrompt(text) {
   return `Extract structured income information from the following free-text description written by an Indian taxpayer. Respond with ONLY a single JSON object, no other text, no markdown code fences, matching exactly this shape:
 
@@ -27,17 +29,10 @@ If the income amount is genuinely not determinable from the text, respond with e
 Text: "${text}"`;
 }
 
-/**
- * Validates and coerces the model's raw text output into structured fields.
- * Pure function -- testable with fake model outputs, no AWS needed. This is
- * the layer that keeps a slightly-malformed or creatively-formatted model
- * response from silently becoming bad data downstream.
- */
+/** Validates and coerces the model's raw text output into structured fields. Unchanged. */
 function parseModelOutput(rawText) {
   let parsed;
   try {
-    // Models sometimes wrap JSON in markdown fences despite instructions
-    // not to -- strip defensively rather than fail on a cosmetic deviation.
     const cleaned = String(rawText)
       .trim()
       .replace(/^```json\s*/i, '')
@@ -72,22 +67,24 @@ function parseModelOutput(rawText) {
   };
 }
 
-/** Real Bedrock call -- the one piece that genuinely can't be tested without live AWS access. */
+/**
+ * Real Bedrock call via Converse -- the one piece that can't be tested
+ * without live AWS access. Request/response shape here is the stable
+ * Converse contract (messages[].content[].text in, output.message.content
+ * in the array), not a model-specific schema.
+ */
 async function defaultInvokeModel(prompt) {
-  const command = new InvokeModelCommand({
+  const command = new ConverseCommand({
     modelId: MODEL_ID,
-    contentType: 'application/json',
-    accept: 'application/json',
-    body: JSON.stringify({
-      anthropic_version: 'bedrock-2023-05-31', // verify against current Bedrock/Anthropic docs -- not independently verifiable from here
-      max_tokens: 300,
-      messages: [{ role: 'user', content: prompt }],
-    }),
+    messages: [
+      { role: 'user', content: [{ text: prompt }] },
+    ],
+    inferenceConfig: { maxTokens: 300, temperature: 0.2 },
   });
   const response = await client.send(command);
-  const responseBody = JSON.parse(new TextDecoder().decode(response.body));
-  const textBlock = (responseBody.content || []).find((b) => b.type === 'text');
-  if (!textBlock) throw new Error('No text content in model response');
+  const content = response.output && response.output.message && response.output.message.content;
+  const textBlock = (content || []).find((b) => typeof b.text === 'string');
+  if (!textBlock) throw new Error('No text content in Converse response');
   return textBlock.text;
 }
 
@@ -98,11 +95,6 @@ function withTimeout(promise, ms) {
   ]);
 }
 
-/**
- * invokeModel is injectable (defaults to the real Bedrock call) specifically
- * so the fallback path can be tested for real with a fake success/failure,
- * without needing live AWS credentials -- see test_parse_income.js.
- */
 async function handler(event, { invokeModel = defaultInvokeModel } = {}) {
   const headers = { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' };
 
@@ -124,11 +116,7 @@ async function handler(event, { invokeModel = defaultInvokeModel } = {}) {
   try {
     rawOutput = await withTimeout(invokeModel(prompt), BEDROCK_TIMEOUT_MS);
   } catch (err) {
-    console.error('Bedrock call failed or timed out:', err.message);
-    // 200, not 500: an unavailable/slow model is an ANTICIPATED, handled
-    // state (SSD.md section 5), not a server error. The frontend reads
-    // parsed:false and switches to the manual form -- this is app-level
-    // routing, not an HTTP failure.
+    console.error('Bedrock call failed or timed out:', err.name || '(no error name)', '-', err.message);
     return {
       statusCode: 200,
       headers,

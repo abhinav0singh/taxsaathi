@@ -1,13 +1,11 @@
-// Handler for POST /explain — DynamoDB keyword lookup (unchanged, already
-// tested), now with a Bedrock call on top to phrase a grounded, personalized
-// answer using the snippet + the user's own calculated numbers. On ANY
-// Bedrock failure, falls back to the raw snippet text -- which is exactly
-// this Lambda's PREVIOUS entire behavior, so the fallback path is provably
-// solid: it's not new code, it's the old code with nothing removed.
+// Handler for POST /explain — DynamoDB keyword lookup (unchanged), now
+// calling Bedrock via Converse instead of raw InvokeModel with an
+// Anthropic-specific body. Same model swap rationale as parseIncome.
+// Fallback to the raw snippet on any Bedrock failure is UNCHANGED.
 
 const { DynamoDBClient, ScanCommand } = require('@aws-sdk/client-dynamodb');
 const { unmarshall } = require('@aws-sdk/util-dynamodb');
-const { BedrockRuntimeClient, InvokeModelCommand } = require('@aws-sdk/client-bedrock-runtime');
+const { BedrockRuntimeClient, ConverseCommand } = require('@aws-sdk/client-bedrock-runtime');
 
 const dynamoClient = new DynamoDBClient({});
 const bedrockClient = new BedrockRuntimeClient({});
@@ -15,12 +13,10 @@ const TABLE_NAME = process.env.TABLE_NAME;
 const MODEL_ID = process.env.BEDROCK_MODEL_ID;
 const BEDROCK_TIMEOUT_MS = 8000;
 
-/** Lowercase + strip everything but letters/digits, so "80 C" and "80c" compare equal. */
 function normalize(str) {
   return String(str).toLowerCase().replace(/[^a-z0-9]/g, '');
 }
 
-/** Retrieval-lite keyword match — unchanged from the DynamoDB-only stage. */
 function findBestMatch(question, items) {
   const normalizedQuestion = normalize(question);
   if (!normalizedQuestion) return null;
@@ -37,12 +33,6 @@ function findBestMatch(question, items) {
   return null;
 }
 
-/**
- * Pure function -- testable without AWS. Grounds the model strictly in the
- * snippet + the user's own numbers, explicitly forbidding invented figures,
- * per TEST_PLAN.md section 5's "response is grounded... doesn't invent
- * numbers not in the user's result" requirement.
- */
 function buildExplainPrompt(explanation, question, calculatedResult) {
   let prompt = `Here is a factual explainer snippet about Indian income tax:\n"${explanation}"\n\nAnswer the user's question using ONLY the information in this snippet and, if given below, their own calculated numbers. Do not invent any numbers or facts not present in what's given here. Keep the answer conversational and under 100 words.\n\nUser's question: "${question}"`;
 
@@ -53,22 +43,19 @@ function buildExplainPrompt(explanation, question, calculatedResult) {
   return prompt;
 }
 
-/** Real Bedrock call -- the one piece that can't be tested without live AWS access. */
+/** Real Bedrock call via Converse. */
 async function defaultInvokeModel(prompt) {
-  const command = new InvokeModelCommand({
+  const command = new ConverseCommand({
     modelId: MODEL_ID,
-    contentType: 'application/json',
-    accept: 'application/json',
-    body: JSON.stringify({
-      anthropic_version: 'bedrock-2023-05-31', // verify against current Bedrock/Anthropic docs
-      max_tokens: 300,
-      messages: [{ role: 'user', content: prompt }],
-    }),
+    messages: [
+      { role: 'user', content: [{ text: prompt }] },
+    ],
+    inferenceConfig: { maxTokens: 300, temperature: 0.2 },
   });
   const response = await bedrockClient.send(command);
-  const responseBody = JSON.parse(new TextDecoder().decode(response.body));
-  const textBlock = (responseBody.content || []).find((b) => b.type === 'text');
-  if (!textBlock) throw new Error('No text content in model response');
+  const content = response.output && response.output.message && response.output.message.content;
+  const textBlock = (content || []).find((b) => typeof b.text === 'string');
+  if (!textBlock) throw new Error('No text content in Converse response');
   return textBlock.text;
 }
 
@@ -79,12 +66,6 @@ function withTimeout(promise, ms) {
   ]);
 }
 
-/**
- * invokeModel and scanTable are both injectable, defaulting to the real
- * AWS calls -- lets tests exercise the Bedrock-success path, the
- * Bedrock-failure fallback path, and the no-match path, all for real,
- * without touching AWS. See test_explain.js.
- */
 async function handler(event, { invokeModel = defaultInvokeModel, scanTable } = {}) {
   const headers = { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' };
 
@@ -128,9 +109,7 @@ async function handler(event, { invokeModel = defaultInvokeModel, scanTable } = 
   try {
     phrasedAnswer = await withTimeout(invokeModel(prompt), BEDROCK_TIMEOUT_MS);
   } catch (err) {
-    console.error('Bedrock call failed or timed out, falling back to raw snippet:', err.message);
-    // SSD.md section 5, explicitly: raw snippet text, unphrased, not a
-    // crash or empty response. This is literally the pre-Bedrock behavior.
+    console.error('Bedrock call failed or timed out, falling back to raw snippet:', err.name || '(no error name)', '-', err.message);
     return {
       statusCode: 200,
       headers,

@@ -1,0 +1,1380 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>TaxSaathi — See exactly where your tax stands</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@400;500;600;700&family=Dancing+Script:wght@600;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #f7f5f0;
+    --bg-raised: #fbfaf7;
+    --line: #2b2b2b;
+    --line-soft: rgba(43,43,43,0.28);
+    --line-faint: rgba(43,43,43,0.12);
+    --wood: #b5651d;
+    --wood-light: #d98e3f;
+    --blue: #0369a1;
+    --blue-light: #0ea5e9;
+    --cliff: #c2410c;
+    --cliff-light: #e0631a;
+    --text: #1c1a16;
+    --text-muted: #6b6459;
+    --border: rgba(43,43,43,0.14);
+    --font-display: 'Space Grotesk', sans-serif;
+    --font-body: 'Plus Jakarta Sans', sans-serif;
+  }
+  :root[data-theme="dark"] { color-scheme: light; } /* deliberately light-only, per FRONTEND_DESIGN.md v2 -- no dark variant */
+
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  @media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } }
+  html, body { margin: 0; padding: 0; background: var(--bg); color: var(--text); font-family: var(--font-body); overflow-x: hidden; }
+  h1, h2, h3 { font-family: var(--font-display); margin: 0; font-weight: 600; }
+  p { margin: 0; }
+  button { font-family: var(--font-body); }
+  a { color: var(--blue); }
+  :focus-visible { outline: 2px solid var(--blue); outline-offset: 3px; }
+
+  .eyebrow { text-transform: uppercase; letter-spacing: 0.08em; font-size: 0.76rem; font-weight: 600; color: var(--text-muted); }
+
+  /* ---------------- HERO (full density) ---------------- */
+  #hero { position: relative; background: var(--bg); padding: 0 clamp(20px, 5vw, 56px); overflow: hidden; }
+  .site-nav { display: flex; gap: 22px; padding: 20px 0 0; position: relative; z-index: 3; }
+  .site-nav a { color: var(--text); font-size: 0.88rem; font-weight: 500; text-decoration: none; }
+  .site-nav a:hover { color: var(--blue); }
+  .hero-nav { display: flex; justify-content: center; align-items: center; padding: 18px 0 8px; position: relative; z-index: 3; }
+
+  .brand-mark { display: flex; flex-direction: column; align-items: center; gap: 8px; }
+
+  /* "SAATHI" in a genuine cursive font, revealed left-to-right via
+     clip-path -- deliberately NOT a hand-traced stroke-path animation
+     (that would need font glyphs converted to path outlines, not
+     something reliable to hand-build) and deliberately plain ASCII
+     letters in a real font, not a special Unicode glyph the loaded
+     fonts might not actually contain (that's what broke the earlier
+     rupee-sign attempt).
+
+     Switched Caveat -> Dancing Script: Caveat's capital I is a single
+     bare vertical stroke by design (not a bug, just that font's actual
+     glyph), easy to misread as truncated at this size. Dancing Script's
+     capitals carry a small flourish, giving the "I" real visual weight
+     regardless of whether the earlier issue was ever true clipping.
+     Kept and increased the defensive right-padding on the OUTER wrapper
+     regardless, in case slant-overhang against #hero's overflow:hidden
+     was also a real factor. */
+  .cursive-mark {
+    font-family: 'Dancing Script', cursive;
+    font-weight: 700;
+    font-size: 3.6rem;
+    color: var(--blue);
+    line-height: 1;
+    padding-right: 0.3em;
+  }
+  #cursiveText {
+    display: inline-block;
+    clip-path: inset(0 100% 0 0);
+    animation: cursive-write 1s ease-out 0.2s forwards;
+  }
+  @keyframes cursive-write { to { clip-path: inset(0 0% 0 0); } }
+  @media (prefers-reduced-motion: reduce) {
+    #cursiveText { animation: none; clip-path: inset(0 0% 0 0); }
+  }
+
+  /* TAX tile row -- plain HTML/CSS tiles (the exact technique already
+     proven working for the CALCULATOR banner), placed in normal
+     document flow between the nav and the illustration. Deliberately
+     NOT absolutely positioned over the SVG this time -- that required
+     guessing coordinates I couldn't verify and got it wrong twice
+     (SVG custom-property/transform-box interaction broke it outright).
+     Normal flow always renders correctly regardless of how the SVG
+     below it scales. */
+  .tax-tile-row.tile-banner {
+    display: flex;
+    gap: 9px;
+    padding: 0;
+    margin-bottom: 0;
+    justify-content: center;
+    position: relative;
+    z-index: 3;
+  }
+  /* Bigger than the CALCULATOR banner's tiles -- this is the primary
+     brand mark, meant to read clearly at a glance on a real laptop
+     screen, not match the smaller in-flow tile size used later on the
+     page. */
+  .tax-tile-row .tile {
+    width: 54px;
+    height: 60px;
+    font-size: 1.9rem;
+  }
+  .tax-tile-row .tile sup { font-size: 0.75rem; bottom: 5px; right: 6px; }
+
+  .hero-illustration {
+    position: relative;
+    width: 100%;
+    max-width: 1200px;
+    margin: 0 auto;
+    /* Recomputed properly this time, not re-guessed: the navbar + bigger
+       brand mark above this now take roughly ~200px, and the headline
+       block below takes roughly ~290px, on a typical laptop window with
+       real browser chrome eating into the viewport. min(vh, px) caps
+       this at a fixed ceiling regardless of window size AND shrinks
+       further on genuinely short viewports -- more conservative than
+       the previous 50vh-only attempt, deliberately, since that one still
+       left the button clipped once the brand mark grew. flex +
+       align-items:flex-end still crops from the empty top rather than
+       the dimension labels at the bottom if this cap is ever hit. */
+    max-height: min(28vh, 240px);
+    overflow: hidden;
+    display: flex;
+    align-items: flex-end;
+  }
+  .hero-illustration svg { display: block; width: 100%; height: auto; }
+
+  .roofline-wire {
+    fill: none;
+    stroke: var(--line);
+    stroke-width: 1.6;
+    stroke-linejoin: round;
+    stroke-dasharray: 3400;
+    stroke-dashoffset: 3400;
+    animation: draw-in 2.2s ease-out forwards;
+  }
+  .roofline-fill {
+    fill: url(#oceanGradient);
+    opacity: 0;
+    animation: fade-in 1.4s ease-out 1.6s forwards;
+  }
+  .roofline-cliff {
+    fill: none;
+    stroke: var(--cliff);
+    stroke-width: 3.2;
+    stroke-linecap: round;
+    stroke-dasharray: 260;
+    stroke-dashoffset: 260;
+    animation: draw-in 1s ease-out 1.9s forwards;
+  }
+  @keyframes draw-in { to { stroke-dashoffset: 0; } }
+  @keyframes fade-in { to { opacity: 0.9; } }
+  @media (prefers-reduced-motion: reduce) {
+    .roofline-wire, .roofline-cliff { animation: none; stroke-dashoffset: 0; }
+    .roofline-fill { animation: none; opacity: 0.9; }
+  }
+
+  /* CALCULATOR tile banner -- CSS-only wood-styled tiles (no photographic
+     assets, per FRONTEND_DESIGN.md's explicit cut of photographic/wood-grain
+     imagery). Settles in fast (~500ms total) and never blocks the form
+     below, which is fully present and usable from the instant the page
+     loads regardless of this animation's state. */
+  .sr-only {
+    position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+    overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; border: 0;
+  }
+  .tile-banner {
+    display: flex;
+    justify-content: center;
+    gap: 6px;
+    margin-bottom: 28px;
+    flex-wrap: wrap;
+  }
+  .tile {
+    display: inline-flex;
+    align-items: flex-end;
+    justify-content: center;
+    width: 38px;
+    height: 42px;
+    background: linear-gradient(160deg, #e6c891 0%, #c9a45f 55%, #b5854a 100%);
+    border-radius: 4px;
+    box-shadow: 0 2px 4px rgba(43,43,43,0.25), inset 0 1px 0 rgba(255,255,255,0.35);
+    font-family: var(--font-display);
+    font-weight: 700;
+    font-size: 1.3rem;
+    color: #2b1c0f;
+    padding-bottom: 3px;
+    position: relative;
+    /* Pre-roll state: hidden and tucked into a rolled-up orientation.
+       Only ANIMATES once a .tile-banner ancestor gains .in-view -- either
+       set immediately (hero, matches the SVG's own auto-play-on-load
+       behavior) or added by IntersectionObserver when the calculator's
+       banner scrolls into view. */
+    opacity: 0;
+    transform: translateY(-50px) rotate(-170deg) scale(0.75);
+  }
+  .tile.small { width: 28px; height: 32px; font-size: 1rem; }
+  .tile-banner.in-view .tile {
+    animation: tile-roll 0.62s cubic-bezier(0.34, 1.4, 0.5, 1) forwards;
+    animation-delay: calc(var(--i) * 70ms);
+  }
+  .tile sup {
+    font-size: 0.55rem;
+    font-weight: 600;
+    position: absolute;
+    bottom: 3px;
+    right: 4px;
+  }
+  @keyframes tile-roll {
+    0% { opacity: 0; transform: translateY(-50px) rotate(-170deg) scale(0.75); }
+    65% { opacity: 1; transform: translateY(2px) rotate(calc(var(--rot) * 1.4)) scale(1.03); }
+    100% { opacity: 1; transform: translateY(0) rotate(var(--rot)) scale(1); }
+  }
+  .type-cursor {
+    display: inline-block;
+    margin-left: 2px;
+    animation: cursor-blink 1s step-end infinite;
+    color: var(--text);
+    font-weight: 400;
+  }
+  @keyframes cursor-blink { 50% { opacity: 0; } }
+  @media (prefers-reduced-motion: reduce) {
+    .tile { animation: none !important; opacity: 1; transform: rotate(var(--rot)); }
+    .type-cursor { animation: none; }
+  }
+  @media (max-width: 480px) {
+    .tile { width: 28px; height: 32px; font-size: 1rem; }
+  }
+
+  .dim-line { stroke: var(--line-soft); stroke-width: 1; }
+  .dim-tick { stroke: var(--line-soft); stroke-width: 1; }
+  .dim-label { font-family: var(--font-body); font-size: 13px; fill: var(--text-muted); }
+  .dim-label.cliff-label { fill: var(--cliff); font-weight: 600; }
+  .measure-circle { fill: none; stroke: var(--line-faint); stroke-width: 1; }
+  .grid-bg { opacity: 0.5; }
+
+  .hero-text { position: relative; z-index: 3; padding: 0 0 clamp(24px, 4vh, 44px); max-width: 640px; }
+  .hero-text h1 { font-size: clamp(1.8rem, 4.2vw, 2.9rem); line-height: 1.08; letter-spacing: -0.01em; }
+  .hero-text .sub { margin-top: 12px; font-size: clamp(1rem, 1.8vw, 1.1rem); color: var(--text-muted); line-height: 1.45; max-width: 46ch; }
+  .hero-cta {
+    margin-top: 18px; display: inline-flex; align-items: center; gap: 10px;
+    background: var(--wood); color: #fff8f0; font-weight: 600; font-size: 0.98rem;
+    padding: 14px 24px; border-radius: 6px; border: none; cursor: pointer;
+    transition: background 0.15s ease, transform 0.15s ease;
+  }
+  .hero-cta:hover { background: var(--wood-light); transform: translateY(-1px); }
+
+  /* ---------------- CALCULATOR INPUT (calm -- non-negotiable) ---------------- */
+  #flow {
+    background: var(--bg);
+    padding: clamp(40px, 7vh, 80px) clamp(20px, 5vw, 40px) 30px;
+    display: flex; justify-content: center;
+  }
+  .flow-inner { width: 100%; max-width: 620px; }
+  .flow-inner h2 { font-size: clamp(1.4rem, 2.6vw, 1.8rem); margin: 8px 0 32px; max-width: 24ch; }
+
+  .panel {
+    position: relative;
+    background: var(--bg-raised);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: clamp(20px, 4vw, 32px);
+    overflow: hidden;
+  }
+  /* Reduced density per section 2: just two faint straight guide-lines, not a schematic */
+  .panel::before, .panel::after {
+    content: ""; position: absolute; left: 0; right: 0; height: 1px;
+    background: var(--line-faint); pointer-events: none;
+  }
+  .panel::before { top: 34%; }
+  .panel::after { top: 68%; }
+
+  .field { margin-bottom: 20px; position: relative; z-index: 1; }
+  .field:last-child { margin-bottom: 0; }
+  .field label { display: block; font-size: 0.92rem; font-weight: 500; margin-bottom: 6px; }
+  .field .help { font-size: 0.81rem; color: var(--text-muted); margin-top: 6px; line-height: 1.45; }
+  .field input[type="number"], .field input[type="text"] {
+    width: 100%; background: #fff; border: 1px solid var(--border); color: var(--text);
+    font-family: var(--font-body); font-size: 1rem; padding: 12px 14px; border-radius: 7px;
+  }
+  .field input::placeholder { color: #a39c8e; }
+
+  .free-text-row { display: flex; gap: 8px; margin-bottom: 22px; position: relative; z-index: 1; }
+  .free-text-row input { flex: 1; }
+  .free-text-row button {
+    background: var(--bg); border: 1px solid var(--border); color: var(--text);
+    font-size: 0.86rem; font-weight: 500; padding: 0 16px; border-radius: 7px; cursor: pointer;
+    white-space: nowrap;
+  }
+  .free-text-row button:hover { background: #efece5; }
+  .free-text-status { font-size: 0.8rem; margin: -12px 0 20px; min-height: 1.2em; position: relative; z-index: 1; }
+  .free-text-status.ok { color: var(--blue); }
+  .free-text-status.fallback { color: var(--text-muted); }
+
+  .divider-label {
+    text-align: center; font-size: 0.78rem; color: var(--text-muted);
+    margin: 0 0 20px; position: relative; z-index: 1;
+  }
+
+  .segmented { display: flex; border: 1px solid var(--border); border-radius: 7px; overflow: hidden; }
+  .segmented button {
+    flex: 1; background: #fff; color: var(--text-muted); border: none; padding: 11px;
+    font-size: 0.92rem; cursor: pointer; transition: background 0.15s ease, color 0.15s ease;
+  }
+  .segmented button.active { background: var(--wood); color: #fff8f0; font-weight: 600; }
+
+  .calc-btn {
+    width: 100%; margin-top: 28px; background: var(--wood); color: #fff8f0;
+    font-weight: 600; font-size: 1rem; padding: 14px; border-radius: 7px; border: none;
+    cursor: pointer; transition: background 0.15s ease; position: relative; z-index: 1;
+  }
+  .calc-btn:hover:not(:disabled) { background: var(--wood-light); }
+  .calc-btn:disabled { opacity: 0.6; cursor: default; }
+
+  .status-line { text-align: center; font-size: 0.85rem; color: var(--text-muted); margin-top: 14px; min-height: 1.2em; }
+  .status-line.error { color: var(--cliff); }
+
+  /* ---------------- RESULTS (medium density) ---------------- */
+  #results-wrap { max-width: 620px; margin: 0 auto; padding: 0 clamp(20px, 5vw, 40px) 100px; }
+  #results { display: none; }
+  #results.visible { display: block; }
+
+  .results-annotation { display: flex; justify-content: center; margin-bottom: 8px; }
+  .results-annotation svg { width: 140px; height: 40px; opacity: 0.55; }
+
+  .regime-row { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-bottom: 18px; }
+  @media (max-width: 480px) { .regime-row { grid-template-columns: 1fr; } }
+  .regime-card {
+    background: var(--bg-raised); border: 1px solid var(--border); border-radius: 10px;
+    padding: 20px; position: relative;
+  }
+  .regime-card.recommended { border-color: var(--blue); }
+  .regime-card .badge {
+    position: absolute; top: -10px; right: 16px; background: var(--blue); color: #fff8f0;
+    font-size: 0.68rem; font-weight: 700; letter-spacing: 0.05em; text-transform: uppercase;
+    padding: 3px 10px; border-radius: 20px;
+  }
+  .regime-card .name { font-size: 0.76rem; color: var(--text-muted); margin-bottom: 8px; text-transform: uppercase; letter-spacing: 0.08em; }
+  .regime-card .amount { font-family: var(--font-display); font-size: 1.55rem; font-weight: 600; }
+  .savings-line { text-align: center; color: var(--text-muted); font-size: 0.92rem; margin: 16px 0 26px; }
+  .savings-line strong { color: var(--blue); font-weight: 600; }
+
+  .signal-label { font-size: 0.76rem; color: var(--text-muted); margin: 30px 0 12px; text-transform: uppercase; letter-spacing: 0.08em; }
+  .signal-cards { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
+  @media (max-width: 620px) { .signal-cards { grid-template-columns: 1fr; } }
+  .signal-card { background: var(--bg-raised); border: 1px solid var(--border); border-radius: 10px; padding: 16px; }
+  .signal-card.cliff-alert { border-color: var(--cliff); background: linear-gradient(180deg, rgba(194,65,12,0.07), var(--bg-raised) 60%); }
+  .signal-card .signal-title { font-size: 0.72rem; color: var(--text-muted); margin-bottom: 8px; text-transform: uppercase; letter-spacing: 0.08em; }
+  .signal-card .signal-value { font-family: var(--font-display); font-size: 1.02rem; font-weight: 600; margin-bottom: 6px; }
+  .signal-card.cliff-alert .signal-value { color: var(--cliff); }
+  .signal-card .signal-detail { font-size: 0.81rem; color: var(--text-muted); line-height: 1.4; }
+
+  .offline-note {
+    display: none; align-items: center; gap: 8px; font-size: 0.8rem; color: var(--text-muted);
+    background: #efece5; border: 1px solid var(--border); border-radius: 7px;
+    padding: 9px 13px; margin-bottom: 18px;
+  }
+  .offline-note.visible { display: flex; }
+  .offline-note .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--cliff); flex-shrink: 0; }
+
+  /* ---------------- Q&A ---------------- */
+  .qa-section { margin-top: 56px; }
+  .chat-window { background: var(--bg-raised); border: 1px solid var(--border); border-radius: 10px; padding: 20px; }
+  .chat-bubble { max-width: 82%; padding: 11px 15px; border-radius: 12px; font-size: 0.91rem; line-height: 1.5; margin-bottom: 12px; }
+  .chat-bubble.user { background: #efece5; margin-left: auto; border-bottom-right-radius: 3px; }
+  .chat-bubble.assistant { background: #fff; border: 1px solid var(--border); border-bottom-left-radius: 3px; }
+  .chat-bubble .fallback-badge {
+    display: inline-block; font-size: 0.68rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em;
+    color: var(--text-muted); background: var(--bg); border: 1px solid var(--border); border-radius: 4px;
+    padding: 2px 6px; margin-bottom: 6px;
+  }
+  .chat-input-row { display: flex; gap: 10px; margin-top: 6px; }
+  .chat-input-row input {
+    flex: 1; background: #fff; border: 1px solid var(--border); color: var(--text);
+    font-family: var(--font-body); font-size: 0.91rem; padding: 11px 14px; border-radius: 7px;
+  }
+  .chat-input-row button {
+    background: var(--wood); color: #fff8f0; border: none; border-radius: 7px;
+    padding: 0 18px; font-size: 0.88rem; font-weight: 600; cursor: pointer;
+  }
+  .chat-input-row button:disabled { opacity: 0.6; cursor: default; }
+  .qa-note { font-size: 0.77rem; color: var(--text-muted); margin-top: 10px; }
+
+  /* ---------------- ABOUT + FAQ (calm, same density as the calculator step) ---------------- */
+  .content-inner { max-width: 640px; margin: 0 auto; padding: 0 clamp(20px, 5vw, 40px); }
+  #about, #faq {
+    padding: clamp(40px, 6vh, 64px) 0;
+    border-top: 1px solid var(--border);
+  }
+  #about h2, #faq h2 { font-size: clamp(1.3rem, 2.4vw, 1.6rem); margin: 8px 0 18px; }
+  .about-copy { color: var(--text-muted); line-height: 1.6; font-size: 0.98rem; margin-bottom: 14px; }
+  .about-copy:last-child { margin-bottom: 0; }
+
+  .faq-item {
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    background: var(--bg-raised);
+    padding: 4px 18px;
+    margin-bottom: 10px;
+  }
+  .faq-item summary {
+    cursor: pointer;
+    padding: 14px 0;
+    font-weight: 600;
+    font-size: 0.98rem;
+    list-style: none;
+    position: relative;
+    padding-right: 24px;
+  }
+  .faq-item summary::-webkit-details-marker { display: none; }
+  .faq-item summary::after {
+    content: "+";
+    position: absolute;
+    right: 0;
+    top: 14px;
+    color: var(--blue);
+    font-family: var(--font-display);
+    font-size: 1.1rem;
+  }
+  .faq-item[open] summary::after { content: "\2212"; }
+  .faq-item p { color: var(--text-muted); line-height: 1.55; font-size: 0.92rem; padding-bottom: 16px; }
+
+  footer { text-align: center; padding: 36px 20px 54px; color: var(--text-muted); font-size: 0.81rem; }
+</style>
+</head>
+<body>
+
+<section id="hero">
+  <nav class="site-nav" id="siteNav">
+    <a href="#about">About</a>
+    <a href="#faq">FAQ</a>
+    <a href="#flow">Tax Calc</a>
+  </nav>
+
+  <div class="hero-nav">
+    <div class="brand-mark">
+      <div class="tax-tile-row tile-banner in-view" id="taxTileRow" aria-hidden="true">
+        <span class="tile" style="--i:0; --rot:-4deg;">T<sup>1</sup></span>
+        <span class="tile" style="--i:1; --rot:3deg;">A<sup>1</sup></span>
+        <span class="tile" style="--i:2; --rot:-3deg;">X<sup>8</sup></span>
+      </div>
+      <div class="cursive-mark">
+        <span id="cursiveText">SAATHI</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="hero-illustration">
+    <svg viewBox="0 0 1200 520" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="A stepped structural profile rising, dropping sharply at the New Regime rebate cliff, then rising again">
+      <defs>
+        <linearGradient id="oceanGradient" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stop-color="#38bdf8" />
+          <stop offset="100%" stop-color="#0c4a6e" />
+        </linearGradient>
+        <pattern id="bgGrid" width="40" height="40" patternUnits="userSpaceOnUse">
+          <path d="M 40 0 L 0 0 0 40" fill="none" stroke="rgba(43,43,43,0.24)" stroke-width="1"/>
+        </pattern>
+      </defs>
+
+      <rect class="grid-bg" x="0" y="0" width="1200" height="520" fill="url(#bgGrid)" />
+
+      <!-- baseline -->
+      <line class="dim-line" x1="40" y1="460" x2="1160" y2="460" />
+
+      <!-- dimension ticks along the baseline at each slab boundary -->
+      <g class="dim-tick">
+        <line x1="60" y1="455" x2="60" y2="465" />
+        <line x1="190" y1="455" x2="190" y2="465" />
+        <line x1="320" y1="455" x2="320" y2="465" />
+        <line x1="450" y1="450" x2="450" y2="470" stroke="var(--cliff)" stroke-width="1.4" />
+        <line x1="750" y1="455" x2="750" y2="465" />
+        <line x1="880" y1="455" x2="880" y2="465" />
+        <line x1="1140" y1="455" x2="1140" y2="465" />
+      </g>
+      <text class="dim-label" x="60" y="482" text-anchor="middle">&#8377;0</text>
+      <text class="dim-label" x="190" y="482" text-anchor="middle">&#8377;4L</text>
+      <text class="dim-label" x="320" y="482" text-anchor="middle">&#8377;8L</text>
+      <text class="dim-label cliff-label" x="450" y="496" text-anchor="middle">&#8377;12L — rebate cliff</text>
+      <text class="dim-label" x="750" y="482" text-anchor="middle">&#8377;16L</text>
+      <text class="dim-label" x="880" y="482" text-anchor="middle">&#8377;20L</text>
+      <text class="dim-label" x="1140" y="482" text-anchor="middle">&#8377;24L+</text>
+
+      <!-- measurement circles, decorative annotation motif echoing the reference -->
+      <circle class="measure-circle" cx="450" cy="305" r="46" />
+      <circle class="measure-circle" cx="450" cy="305" r="2" fill="var(--line-faint)" />
+      <line class="dim-line" x1="450" y1="305" x2="496" y2="305" stroke-dasharray="2 3" />
+
+      <!-- the structural profile: wireframe, fill, and the bold cliff segment -->
+      <path class="roofline-wire" d="M 60.0,460.0 L 60.0,434.0 L 190.0,434.0 L 190.0,417.0 L 320.0,417.0 L 320.0,400.0 L 450.0,400.0 C 490.0,305.0 545.0,305.0 585.0,385.0 S 605.0,410.0 620.0,445.0 L 620.0,409.3 L 750.0,409.3 L 750.0,373.6 L 880.0,373.6 L 880.0,337.9 L 1010.0,337.9 L 1010.0,302.2 L 1140.0,302.2" />
+      <path class="roofline-fill" d="M 60.0,460.0 L 60.0,434.0 L 190.0,434.0 L 190.0,417.0 L 320.0,417.0 L 320.0,400.0 L 450.0,400.0 C 490.0,305.0 545.0,305.0 585.0,385.0 S 605.0,410.0 620.0,445.0 L 620.0,409.3 L 750.0,409.3 L 750.0,373.6 L 880.0,373.6 L 880.0,337.9 L 1010.0,337.9 L 1010.0,302.2 L 1140.0,302.2 L 1140,460 L 60,460 Z" />
+      <path class="roofline-cliff" d="M 450.0,400.0 C 490.0,305.0 545.0,305.0 585.0,385.0 S 605.0,410.0 620.0,445.0" />
+    </svg>
+  </div>
+
+  <div class="hero-text">
+    <h1>See exactly where your tax stands</h1>
+    <p class="sub">Two regimes, one cliff-edge most calculators never show you. TaxSaathi finds it before it finds you.</p>
+    <button class="hero-cta" id="scrollCta">Calculate your tax</button>
+  </div>
+</section>
+
+<main id="flow">
+  <div class="flow-inner">
+    <div class="tile-banner" id="tileBanner" aria-hidden="true">
+      <span class="tile" style="--i:0; --rot:-3deg;">C<sup>3</sup></span>
+      <span class="tile" style="--i:1; --rot:2deg;">A<sup>1</sup></span>
+      <span class="tile" style="--i:2; --rot:-2deg;">L<sup>1</sup></span>
+      <span class="tile" style="--i:3; --rot:3deg;">C<sup>3</sup></span>
+      <span class="tile" style="--i:4; --rot:-2deg;">U<sup>1</sup></span>
+      <span class="tile" style="--i:5; --rot:2deg;">L<sup>1</sup></span>
+      <span class="tile" style="--i:6; --rot:-3deg;">A<sup>1</sup></span>
+      <span class="tile" style="--i:7; --rot:2deg;">T<sup>1</sup></span>
+      <span class="tile" style="--i:8; --rot:-2deg;">O<sup>1</sup></span>
+      <span class="tile" style="--i:9; --rot:3deg;">R<sup>1</sup></span>
+    </div>
+
+    <p class="eyebrow">Your numbers</p>
+    <h2>
+      <span class="sr-only">Tell us what you earn. We'll show you what it means.</span>
+      <span id="typewriterText" aria-hidden="true"></span><span class="type-cursor" aria-hidden="true">|</span>
+    </h2>
+
+    <form class="panel" id="incomeForm">
+      <div class="free-text-row">
+        <input type="text" id="freeText" placeholder="Or describe it in your own words — e.g. &quot;I earn 12 lakhs freelancing&quot;">
+        <button type="button" id="parseBtn">Auto-fill</button>
+      </div>
+      <p class="free-text-status" id="freeTextStatus"></p>
+
+      <p class="divider-label">— or fill in directly —</p>
+
+      <div class="field">
+        <label for="grossIncome">Annual gross income</label>
+        <input type="number" id="grossIncome" placeholder="e.g. 900000" min="0" step="1000" required>
+      </div>
+
+      <div class="field">
+        <label>How you earn it</label>
+        <div class="segmented" role="group" aria-label="Employment type">
+          <button type="button" class="active" data-value="true">Salaried</button>
+          <button type="button" data-value="false">Freelance / business</button>
+        </div>
+      </div>
+
+      <div class="field">
+        <label for="deductions80c">Section 80C investments <span style="color:var(--text-muted); font-weight:400;">(optional)</span></label>
+        <input type="number" id="deductions80c" placeholder="0" min="0" step="1000">
+        <p class="help">PPF, ELSS, life insurance premiums, home loan principal, and similar — only counts if you pick the Old Regime. Capped at &#8377;1,50,000.</p>
+      </div>
+
+      <div class="field">
+        <label for="deductions80d">Section 80D health insurance <span style="color:var(--text-muted); font-weight:400;">(optional)</span></label>
+        <input type="number" id="deductions80d" placeholder="0" min="0" step="1000">
+        <p class="help">Premiums you've paid for health insurance — also Old Regime only.</p>
+      </div>
+
+      <button type="submit" class="calc-btn" id="calcBtn">Calculate</button>
+      <p class="status-line" id="calcStatus"></p>
+    </form>
+  </div>
+</main>
+
+<div id="results-wrap">
+  <div id="results">
+    <div class="results-annotation">
+      <svg viewBox="0 0 140 40" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+        <path d="M5,32 L5,20 L45,20 L45,10 C60,2 75,2 90,14 S110,26 135,26" fill="none" stroke="var(--line-soft)" stroke-width="1.3"/>
+        <path d="M45,10 C60,2 75,2 90,14 S110,26 108,26" fill="none" stroke="var(--cliff)" stroke-width="1.8" stroke-linecap="round"/>
+      </svg>
+    </div>
+
+    <div class="offline-note" id="offlineNote">
+      <span class="dot"></span>
+      <span>Showing an offline estimate — couldn't reach the live calculator just now.</span>
+    </div>
+
+    <div class="regime-row" id="regimeRow"></div>
+    <p class="savings-line" id="savingsLine"></p>
+
+    <p class="signal-label">What this means for you</p>
+    <div class="signal-cards" id="signalCards"></div>
+
+    <div class="qa-section">
+      <p class="eyebrow">Ask a question</p>
+      <div class="chat-window">
+        <div id="chatMessages"></div>
+        <div class="chat-input-row">
+          <input type="text" id="chatInput" placeholder="Ask about your taxes… e.g. what's 80C?">
+          <button type="button" id="chatBtn">Ask</button>
+        </div>
+        <p class="qa-note" id="qaNote">Answers use our tax reference directly. AI-phrased answers will appear automatically once Bedrock model access is approved.</p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<section id="about">
+  <div class="content-inner">
+    <p class="eyebrow">About</p>
+    <h2>Why TaxSaathi exists</h2>
+    <p class="about-copy">Most calculators show you a number. They don't show you the New Regime's rebate cliff-edge — the point where taxable income crosses ₹12L and the tax due jumps from zero to the full amount, not gradually, all at once. TaxSaathi surfaces that moment directly, alongside two other signals most tools skip entirely: how much headroom you still have on your 80C deductions, and exactly how far you are from your next tax slab.</p>
+    <p class="about-copy">Figures shown are for FY 2026-27. There's no login and nothing about your income is stored — every calculation runs fresh, per request.</p>
+  </div>
+</section>
+
+<section id="faq">
+  <div class="content-inner">
+    <p class="eyebrow">FAQ</p>
+    <h2>Common questions</h2>
+
+    <details class="faq-item">
+      <summary>Is my data stored anywhere?</summary>
+      <p>No. TaxSaathi doesn't require an account, and the numbers you enter aren't saved — each calculation is computed fresh and isn't retained afterward.</p>
+    </details>
+
+    <details class="faq-item">
+      <summary>What exactly is the "rebate cliff-edge"?</summary>
+      <p>Under the New Regime, taxable income up to ₹12L pays zero tax under Section 87A. Cross that line by even ₹1 and the rebate disappears entirely — you owe tax on the full amount, not just the portion over ₹12L. That sudden jump is the cliff-edge.</p>
+    </details>
+
+    <details class="faq-item">
+      <summary>Which regime should I choose?</summary>
+      <p>It depends entirely on your actual numbers — your income, and how much you claim under 80C/80D. That's exactly what the calculator above works out for you rather than guessing; for most salaried earners without large deductions, the New Regime tends to come out ahead, but your own figures are what decide it.</p>
+    </details>
+
+    <details class="faq-item">
+      <summary>Does this replace a chartered accountant?</summary>
+      <p>No — TaxSaathi is a planning and awareness tool, not professional tax or legal advice. For filing, or anything with real financial stakes, check with a qualified CA.</p>
+    </details>
+
+    <details class="faq-item">
+      <summary>What if the AI-phrased answers aren't showing up?</summary>
+      <p>The Q&A section falls back to a plain-reference answer whenever the AI phrasing layer is unavailable — you'll still get a correct answer, just without the natural-language phrasing on top.</p>
+    </details>
+  </div>
+</section>
+
+<footer>TaxSaathi — built for the WeMakeDevs First Commit AWS hackathon.</footer>
+
+<script>
+/* =====================================================================
+   Hero: purely CSS/SVG-driven (the .roofline-wire/.roofline-fill/
+   .roofline-cliff animations run automatically via CSS keyframes on
+   page load -- no JS needed for the hero itself, which is a genuine
+   simplification over the earlier Three.js version).
+   ===================================================================== */
+
+document.getElementById('scrollCta').addEventListener('click', function () {
+  var reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  document.getElementById('flow').scrollIntoView({ behavior: reduceMotion ? 'auto' : 'smooth' });
+});
+
+/* Nav links: explicit JS scroll, same proven pattern as scrollCta above,
+   rather than relying only on native anchor-jump + CSS scroll-behavior --
+   guarantees the actual scroll fires regardless of any CSS-support edge
+   case, since this is the one thing already confirmed working. */
+document.querySelectorAll('#siteNav a').forEach(function (link) {
+  link.addEventListener('click', function (e) {
+    var targetId = link.getAttribute('href').slice(1);
+    var target = document.getElementById(targetId);
+    if (!target) return;
+    e.preventDefault();
+    var reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    target.scrollIntoView({ behavior: reduceMotion ? 'auto' : 'smooth' });
+  });
+});
+
+/* =====================================================================
+   Calculator tile banner: rolls in once, triggered when scrolled into
+   view (IntersectionObserver, one-time, unobserved after firing) rather
+   than on page load -- ties the roll to the act of arriving at the
+   calculator by scrolling down, without continuously linking the
+   animation to scroll position (that continuous-link approach is what's
+   explicitly cut in FRONTEND_DESIGN.md, and is also the higher-risk
+   thing to get wrong without a visual preview). The form itself is
+   present and interactive throughout, regardless of this animation's
+   state -- nothing here blocks or delays reaching it.
+
+   Once the tiles finish rolling, the headline typewriter starts. The
+   REAL headline text is always in the DOM via .sr-only (screen readers
+   get it instantly and correctly, regardless of animation state) --
+   this only animates a visually-hidden-from-assistive-tech duplicate.
+   ===================================================================== */
+(function () {
+  var banner = document.getElementById('tileBanner');
+  var typeTarget = document.getElementById('typewriterText');
+  var fullText = "Tell us what you earn. We'll show you what it means.";
+  var reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  var TYPE_SPEED_MS = 55; // slower, more deliberate typewriter pace
+
+  function runTypewriter() {
+    var i = 0;
+    function typeNext() {
+      if (i <= fullText.length) {
+        typeTarget.textContent = fullText.slice(0, i);
+        i++;
+        setTimeout(typeNext, TYPE_SPEED_MS);
+      }
+    }
+    typeNext();
+  }
+
+  if (reduceMotion) {
+    banner.classList.add('in-view');
+    typeTarget.textContent = fullText;
+    return;
+  }
+
+  if ('IntersectionObserver' in window) {
+    var observer = new IntersectionObserver(function (entries, obs) {
+      entries.forEach(function (entry) {
+        if (entry.isIntersecting) {
+          banner.classList.add('in-view');
+          // 10 tiles * 70ms stagger + ~620ms roll duration each, plus a
+          // short buffer -- starts the headline once the last tile settles.
+          setTimeout(runTypewriter, 10 * 70 + 620 + 150);
+          obs.unobserve(banner);
+        }
+      });
+    }, { threshold: 0.3 });
+    observer.observe(banner);
+  } else {
+    // No IntersectionObserver support -- fail open rather than never show the text.
+    banner.classList.add('in-view');
+    runTypewriter();
+  }
+})();
+
+/* =====================================================================
+   Offline fallback calculator -- the same verified calculator.js logic
+   from earlier stages, used ONLY if the live /calculate call fails for
+   any reason (network, CORS, 5xx). Kept, not because the API integration
+   is untrusted, but because a live demo depending on a single network
+   call with no fallback is a real risk -- and this mirrors the exact
+   fallback philosophy the backend itself uses for Bedrock (SSD.md
+   section 5), applied consistently at this layer too.
+   ===================================================================== */
+/**
+ * TaxSaathi core tax calculator (FY 2026-27).
+ *
+ * Pure JavaScript — no AWS, no network calls. Given a person's income and
+ * deduction details, returns computed tax under both Old and New regimes.
+ *
+ * Every function here is a pure function (same input -> same output, no
+ * side effects, no shared state). That's deliberate: it makes each piece
+ * testable in isolation, and this file becomes the Lambda function body
+ * later with zero changes.
+ */
+
+// ---------------------------------------------------------------------------
+// Slab definitions
+// ---------------------------------------------------------------------------
+// Each slab is [lowerBound, upperBound, rate]. upperBound=null means "and above".
+// Amounts are in rupees.
+
+const NEW_REGIME_SLABS = [
+  [0, 400000, 0.00],
+  [400000, 800000, 0.05],
+  [800000, 1200000, 0.10],
+  [1200000, 1600000, 0.15],
+  [1600000, 2000000, 0.20],
+  [2000000, 2400000, 0.25],
+  [2400000, null, 0.30],
+];
+
+const OLD_REGIME_SLABS = [
+  [0, 250000, 0.00],
+  [250000, 500000, 0.05],
+  [500000, 1000000, 0.20],
+  [1000000, null, 0.30],
+];
+
+const CESS_RATE = 0.04;                    // Health & Education Cess, on (tax + surcharge)
+const SURCHARGE_THRESHOLD = 5000000;       // ₹50L — above this, surcharge kicks in
+const STANDARD_DEDUCTION_SALARIED = 75000; // New regime, salaried only
+const NEW_REGIME_REBATE_THRESHOLD = 1200000;  // New regime 87A: taxable income up to 12L -> zero tax
+const OLD_REGIME_REBATE_THRESHOLD = 500000;   // Old regime 87A: taxable income up to 5L -> zero tax (smaller, separate provision)
+
+/**
+ * Applies a progressive slab structure to taxable income.
+ *
+ * "Progressive" means each slice of income is taxed at its own rate — e.g.
+ * under the new regime, the first 4L is tax-free no matter how high your
+ * total income is; only the portion between 4L-8L is taxed at 5%, and so
+ * on. We walk each slab and tax only the portion of income inside it.
+ */
+function computeSlabTax(taxableIncome, slabs) {
+  if (taxableIncome <= 0) return 0;
+
+  let tax = 0;
+  for (const [lower, upper, rate] of slabs) {
+    if (taxableIncome <= lower) break;
+    const slabUpper = upper !== null ? upper : taxableIncome;
+    const taxableInSlab = Math.min(taxableIncome, slabUpper) - lower;
+    if (taxableInSlab > 0) tax += taxableInSlab * rate;
+  }
+  return tax;
+}
+
+/**
+ * Section 87A rebate — New Regime.
+ *
+ * A rebate differs from a deduction: a deduction lowers taxable income
+ * *before* tax is computed; a rebate wipes out tax *after* it's computed,
+ * but only below a threshold.
+ *
+ * NOTE: this is a cliff-edge, not a gradual phase-out. Cross the threshold
+ * by ₹1 and the ENTIRE tax becomes payable, not just tax on the excess.
+ * That's a real quirk of the law, not a bug in this code.
+ */
+function applyNewRegimeRebate(taxableIncome, tax) {
+  if (taxableIncome <= NEW_REGIME_REBATE_THRESHOLD) return 0;
+  return tax;
+}
+
+/**
+ * Section 87A rebate — Old Regime.
+ *
+ * This is a SEPARATE, smaller provision from the new-regime rebate above:
+ * old regime rebate threshold is 5L taxable income, not 12L. This was
+ * missing from the first version of this calculator — flagging that fix
+ * explicitly here since it changes the answer for any old-regime user
+ * under 5L taxable income (a very plausible bracket for first-time earners).
+ */
+function applyOldRegimeRebate(taxableIncome, tax) {
+  if (taxableIncome <= OLD_REGIME_REBATE_THRESHOLD) return 0;
+  return tax;
+}
+
+/**
+ * Surcharge: extra charge on top of tax, only for high incomes.
+ * We only implement the >50L bracket (the first threshold) since
+ * TaxSaathi's target users (students/freelancers/interns) won't realistically
+ * be anywhere near this range. Deliberate scope cut, not an oversight —
+ * flagged here so it isn't mistaken for a missed case later.
+ */
+function applySurcharge(tax, taxableIncome) {
+  if (taxableIncome > SURCHARGE_THRESHOLD) return tax * 0.10; // 10% surcharge, first slab only
+  return 0;
+}
+
+/** Health & Education Cess: flat 4% on (tax + surcharge), both regimes. */
+function applyCess(taxPlusSurcharge) {
+  return taxPlusSurcharge * CESS_RATE;
+}
+
+/**
+ * Full New Regime computation, in order:
+ * gross income -> standard deduction (if salaried) -> slab tax ->
+ * 87A rebate -> surcharge -> cess -> final tax
+ */
+function calculateNewRegime(grossIncome, isSalaried = true) {
+  const standardDeduction = isSalaried ? STANDARD_DEDUCTION_SALARIED : 0;
+  const taxableIncome = Math.max(0, grossIncome - standardDeduction);
+
+  const slabTax = computeSlabTax(taxableIncome, NEW_REGIME_SLABS);
+  const taxAfterRebate = applyNewRegimeRebate(taxableIncome, slabTax);
+  const surcharge = applySurcharge(taxAfterRebate, taxableIncome);
+  const cess = applyCess(taxAfterRebate + surcharge);
+  const finalTax = taxAfterRebate + surcharge + cess;
+
+  return {
+    regime: "new",
+    grossIncome,
+    standardDeduction,
+    taxableIncome,
+    slabTax: round2(slabTax),
+    rebateApplied: slabTax > 0 && taxAfterRebate === 0,
+    surcharge: round2(surcharge),
+    cess: round2(cess),
+    finalTax: round2(finalTax),
+  };
+}
+
+/**
+ * Full Old Regime computation, in order:
+ * gross income -> minus 80C/80D deductions -> slab tax -> 87A rebate ->
+ * surcharge -> cess -> final tax
+ */
+function calculateOldRegime(grossIncome, deductions80c = 0, deductions80d = 0) {
+  const cappedDeductions80c = Math.min(deductions80c, 150000); // 80C capped at 1.5L by law
+  const taxableIncome = Math.max(0, grossIncome - cappedDeductions80c - deductions80d);
+
+  const slabTax = computeSlabTax(taxableIncome, OLD_REGIME_SLABS);
+  const taxAfterRebate = applyOldRegimeRebate(taxableIncome, slabTax);
+  const surcharge = applySurcharge(taxAfterRebate, taxableIncome);
+  const cess = applyCess(taxAfterRebate + surcharge);
+  const finalTax = taxAfterRebate + surcharge + cess;
+
+  return {
+    regime: "old",
+    grossIncome,
+    deductions80c: cappedDeductions80c,
+    deductions80d,
+    taxableIncome,
+    slabTax: round2(slabTax),
+    rebateApplied: slabTax > 0 && taxAfterRebate === 0,
+    surcharge: round2(surcharge),
+    cess: round2(cess),
+    finalTax: round2(finalTax),
+  };
+}
+
+/** Runs both regimes and returns a side-by-side comparison. */
+function compareRegimes(grossIncome, isSalaried = true, deductions80c = 0, deductions80d = 0) {
+  const newRegime = calculateNewRegime(grossIncome, isSalaried);
+  const oldRegime = calculateOldRegime(grossIncome, deductions80c, deductions80d);
+
+  const recommended = newRegime.finalTax <= oldRegime.finalTax ? "new" : "old";
+  const savings = Math.abs(newRegime.finalTax - oldRegime.finalTax);
+
+  return {
+    newRegime,
+    oldRegime,
+    recommended,
+    savings: round2(savings),
+  };
+}
+
+function round2(n) {
+  return Math.round(n * 100) / 100;
+}
+
+// ---------------------------------------------------------------------------
+// Regime-optimization logic (SSD.md v2, section 6)
+// ---------------------------------------------------------------------------
+// Pure functions, same pattern as everything above. Output is structured
+// data (numbers + a reason code) — no prose. The `explain` Lambda phrases
+// this into language later via Bedrock; this layer never does language,
+// Bedrock never does math (SSD.md's separation-of-concerns principle).
+
+// Heuristic threshold below is a deliberate hackathon-speed judgment call,
+// not a value from tax law. Flagging it explicitly so it's easy to spot
+// and revisit if time allows:
+const REBATE_CLIFF_PROXIMITY_BAND = 50000; // "near" the 87A cliff = within ±₹50,000 of it
+
+/**
+ * Within-regime lever #1: if Old Regime is the CURRENT recommendation, how
+ * much would maxing out remaining 80C room actually save?
+ *
+ * Deliberately scoped to only fire when Old is recommended — New Regime
+ * doesn't accept 80C/80D deductions at all, so "max your 80C" is not a
+ * lever that changes anything for a New-Regime user; suggesting it anyway
+ * would be misleading, not just unhelpful. (This replaces an earlier
+ * cross-regime "crossover" version of this function — see the note at the
+ * bottom of test_calculator.js for why that approach was dropped.)
+ */
+function analyzeDeductionHeadroom(grossIncome, deductions80c = 0, deductions80d = 0, recommendedRegime) {
+  if (recommendedRegime !== "old") {
+    return {
+      applicable: false,
+      remainingHeadroom: null,
+      potentialSavings: null,
+      reasonCode: "NOT_APPLICABLE_NEW_REGIME_NO_DEDUCTIONS",
+    };
+  }
+
+  const remainingHeadroom = Math.max(0, 150000 - deductions80c);
+  if (remainingHeadroom === 0) {
+    return {
+      applicable: false,
+      remainingHeadroom: 0,
+      potentialSavings: 0,
+      reasonCode: "ALREADY_MAXED_80C",
+    };
+  }
+
+  const currentTax = calculateOldRegime(grossIncome, deductions80c, deductions80d).finalTax;
+  const maxedTax = calculateOldRegime(grossIncome, deductions80c + remainingHeadroom, deductions80d).finalTax;
+  const savings = round2(currentTax - maxedTax);
+
+  if (savings <= 0) {
+    return {
+      applicable: false,
+      remainingHeadroom,
+      potentialSavings: 0,
+      reasonCode: "NO_ADDITIONAL_SAVINGS",
+    };
+  }
+
+  return {
+    applicable: true,
+    remainingHeadroom,
+    potentialSavings: savings,
+    reasonCode: "MAXING_80C_SAVES",
+  };
+}
+
+/**
+ * Within-regime lever #2: distance to the next slab boundary, in whichever
+ * regime is currently recommended.
+ *
+ * Always computable — every taxable income sits inside exactly one slab
+ * bracket, in both regimes. Answers "how much more taxable income before
+ * your marginal rate jumps" (useful for a freelancer deciding whether to
+ * take on more work this FY) rather than prescribing an action.
+ */
+function findSlabBoundaryDistance(taxableIncome, slabs) {
+  for (let i = 0; i < slabs.length; i++) {
+    const [lower, upper, rate] = slabs[i];
+    const inThisSlab = taxableIncome >= lower && (upper === null || taxableIncome < upper);
+    if (inThisSlab) {
+      if (upper === null) {
+        return {
+          currentMarginalRate: rate,
+          nextMarginalRate: null,
+          distanceToNextSlab: null,
+          reasonCode: "IN_TOP_SLAB",
+        };
+      }
+      const nextMarginalRate = slabs[i + 1] ? slabs[i + 1][2] : null;
+      return {
+        currentMarginalRate: rate,
+        nextMarginalRate,
+        distanceToNextSlab: round2(upper - taxableIncome),
+        reasonCode: "WITHIN_SLAB",
+      };
+    }
+  }
+  // Unreachable given slabs cover [0, Infinity) — guard kept cheap and honest.
+  return {
+    currentMarginalRate: null,
+    nextMarginalRate: null,
+    distanceToNextSlab: null,
+    reasonCode: "UNRESOLVED_SLAB",
+  };
+}
+
+function analyzeSlabBoundary(grossIncome, isSalaried = true, deductions80c = 0, deductions80d = 0, recommendedRegime) {
+  let taxableIncome;
+  let slabs;
+
+  if (recommendedRegime === "new") {
+    const standardDeduction = isSalaried ? STANDARD_DEDUCTION_SALARIED : 0;
+    taxableIncome = Math.max(0, grossIncome - standardDeduction);
+    slabs = NEW_REGIME_SLABS;
+  } else {
+    const cappedDeductions80c = Math.min(deductions80c, 150000);
+    taxableIncome = Math.max(0, grossIncome - cappedDeductions80c - deductions80d);
+    slabs = OLD_REGIME_SLABS;
+  }
+
+  return findSlabBoundaryDistance(taxableIncome, slabs);
+}
+
+/**
+ * Rebate cliff-edge proximity — New Regime only.
+ *
+ * The 87A rebate in the new regime is a cliff (see applyNewRegimeRebate's
+ * comment): taxable income of exactly 12L pays zero tax; 12L + ₹1 pays tax
+ * on the FULL amount, not just the ₹1 over. This flags when a user is close
+ * to that cliff on either side, since it's worth knowing about even though
+ * (unlike the crossover above) there's no deduction lever to pull here —
+ * the new regime doesn't accept 80C/80D deductions at all.
+ *
+ * Threshold note: taxable income threshold is always ₹12L, but the GROSS
+ * income threshold differs by ₹75,000 (the standard deduction) depending on
+ * salaried status — ₹12.75L gross for salaried, ₹12L gross for freelance.
+ * That's the "12L / 12.75L" distinction from SSD.md section 6.
+ */
+function checkRebateCliffProximity(grossIncome, isSalaried = true) {
+  const standardDeduction = isSalaried ? STANDARD_DEDUCTION_SALARIED : 0;
+  const taxableIncome = Math.max(0, grossIncome - standardDeduction);
+  const distance = taxableIncome - NEW_REGIME_REBATE_THRESHOLD;
+
+  if (distance > 0 && distance <= REBATE_CLIFF_PROXIMITY_BAND) {
+    return {
+      nearCliff: true,
+      side: "just_above",
+      distanceFromThreshold: round2(distance),
+      reasonCode: "JUST_ABOVE_REBATE_CLIFF",
+    };
+  }
+
+  if (distance <= 0 && Math.abs(distance) <= REBATE_CLIFF_PROXIMITY_BAND) {
+    return {
+      nearCliff: true,
+      side: "just_below",
+      distanceFromThreshold: round2(Math.abs(distance)),
+      reasonCode: "SAFELY_JUST_BELOW_REBATE_CLIFF",
+    };
+  }
+
+  return {
+    nearCliff: false,
+    side: null,
+    distanceFromThreshold: null,
+    reasonCode: "NOT_NEAR_CLIFF",
+  };
+}
+
+/**
+ * Combines the full regime comparison with all optimizer signals into one
+ * structured result — this is what the `calculate` Lambda returns directly
+ * (SSD.md section 4: "full comparison + optimization suggestion"). Includes
+ * the complete `comparison` object (both regimes' tax breakdowns), not just
+ * the recommendation label, so this function alone is a complete API
+ * response with nothing further to assemble.
+ */
+function analyzeOptimization(grossIncome, isSalaried = true, deductions80c = 0, deductions80d = 0) {
+  const comparison = compareRegimes(grossIncome, isSalaried, deductions80c, deductions80d);
+  const rebateCliffEdge = checkRebateCliffProximity(grossIncome, isSalaried);
+  const deductionHeadroom = analyzeDeductionHeadroom(grossIncome, deductions80c, deductions80d, comparison.recommended);
+  const slabBoundary = analyzeSlabBoundary(grossIncome, isSalaried, deductions80c, deductions80d, comparison.recommended);
+
+  return {
+    comparison,
+    currentRecommendation: comparison.recommended,
+    rebateCliffEdge,
+    deductionHeadroom,
+    slabBoundary,
+  };
+}
+
+
+/* =====================================================================
+   Live API integration
+   ===================================================================== */
+
+var API = {
+  calculate: 'https://t0b34tyox3.execute-api.ap-south-1.amazonaws.com/calculate',
+  explain: 'https://t0b34tyox3.execute-api.ap-south-1.amazonaws.com/explain',
+  parseIncome: 'https://t0b34tyox3.execute-api.ap-south-1.amazonaws.com/parseIncome',
+};
+
+async function callApi(url, body) {
+  var res = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  var data = null;
+  try { data = await res.json(); } catch (e) { /* leave null */ }
+  if (!res.ok) {
+    var err = new Error('API returned ' + res.status);
+    err.status = res.status;
+    err.data = data;
+    throw err;
+  }
+  return data;
+}
+
+function escapeHtml(str) {
+  var div = document.createElement('div');
+  div.textContent = str;
+  return div.innerHTML;
+}
+
+function formatRupees(n) {
+  return '\u20b9' + Math.round(n).toLocaleString('en-IN');
+}
+
+var isSalaried = true;
+var segButtons = document.querySelectorAll('.segmented button');
+segButtons.forEach(function (btn) {
+  btn.addEventListener('click', function () {
+    segButtons.forEach(function (b) { b.classList.remove('active'); });
+    btn.classList.add('active');
+    isSalaried = btn.dataset.value === 'true';
+  });
+});
+
+/* ---- Free-text income parsing (/parseIncome) ---- */
+document.getElementById('parseBtn').addEventListener('click', async function () {
+  var text = document.getElementById('freeText').value.trim();
+  var statusEl = document.getElementById('freeTextStatus');
+  if (!text) return;
+
+  statusEl.textContent = 'Reading that\u2026';
+  statusEl.className = 'free-text-status';
+
+  try {
+    var result = await callApi(API.parseIncome, { text: text });
+    if (result.parsed) {
+      document.getElementById('grossIncome').value = result.fields.grossIncome;
+      document.getElementById('deductions80c').value = result.fields.deductions80c || '';
+      document.getElementById('deductions80d').value = result.fields.deductions80d || '';
+      isSalaried = result.fields.isSalaried;
+      segButtons.forEach(function (b) {
+        b.classList.toggle('active', (b.dataset.value === 'true') === isSalaried);
+      });
+      statusEl.textContent = 'Filled in below \u2014 check it looks right.';
+      statusEl.className = 'free-text-status ok';
+    } else {
+      // parsed:false is an ANTICIPATED response shape (SSD.md section 5),
+      // not an error -- shown directly using the message the Lambda itself
+      // returns, not a generic failure string.
+      statusEl.textContent = result.message || 'Couldn\u2019t understand that automatically \u2014 please fill in the fields below.';
+      statusEl.className = 'free-text-status fallback';
+    }
+  } catch (err) {
+    console.error('parseIncome call failed:', err.message);
+    statusEl.textContent = 'Couldn\u2019t reach the parser right now \u2014 please fill in the fields below.';
+    statusEl.className = 'free-text-status fallback';
+  }
+});
+
+/* ---- Main calculate flow (/calculate, with offline fallback) ---- */
+var lastResult = null; // passed along to /explain so answers can ground on the user's own numbers
+
+var DEDUCTION_HEADROOM_COPY = {
+  NOT_APPLICABLE_NEW_REGIME_NO_DEDUCTIONS: 'Not applicable \u2014 the New Regime doesn\u2019t use 80C/80D at all.',
+  ALREADY_MAXED_80C: 'You\u2019ve already used your full 80C limit.',
+  NO_ADDITIONAL_SAVINGS: 'No further savings \u2014 your tax is already at its floor.',
+};
+var SLAB_BOUNDARY_COPY = {
+  IN_TOP_SLAB: 'You\u2019re in the top slab \u2014 no higher rate ahead.',
+};
+
+function renderResults(result) {
+  var cmp = result.comparison;
+
+  var regimeRow = document.getElementById('regimeRow');
+  regimeRow.innerHTML =
+    '<div class="regime-card' + (cmp.recommended === 'new' ? ' recommended' : '') + '">' +
+      (cmp.recommended === 'new' ? '<span class="badge">Recommended</span>' : '') +
+      '<div class="name">New Regime</div>' +
+      '<div class="amount">' + formatRupees(cmp.newRegime.finalTax) + '</div>' +
+    '</div>' +
+    '<div class="regime-card' + (cmp.recommended === 'old' ? ' recommended' : '') + '">' +
+      (cmp.recommended === 'old' ? '<span class="badge">Recommended</span>' : '') +
+      '<div class="name">Old Regime</div>' +
+      '<div class="amount">' + formatRupees(cmp.oldRegime.finalTax) + '</div>' +
+    '</div>';
+
+  document.getElementById('savingsLine').innerHTML =
+    'The ' + (cmp.recommended === 'new' ? 'New' : 'Old') + ' Regime saves you <strong>' + formatRupees(cmp.savings) + '</strong> compared to the other.';
+
+  var cards = [];
+
+  var cliff = result.rebateCliffEdge;
+  var cliffAlert = cliff.nearCliff && cliff.side === 'just_above';
+  cards.push(
+    '<div class="signal-card' + (cliffAlert ? ' cliff-alert' : '') + '">' +
+      '<div class="signal-title">Rebate cliff-edge</div>' +
+      '<div class="signal-value">' + (
+        cliff.nearCliff ? (cliff.side === 'just_above' ? 'Just over the edge' : 'Just under, safely') : 'Not near the cliff'
+      ) + '</div>' +
+      '<div class="signal-detail">' + (
+        cliff.nearCliff
+          ? formatRupees(cliff.distanceFromThreshold) + ' ' + (cliff.side === 'just_above' ? 'over' : 'under') + ' the \u20b912L threshold.'
+          : 'You\u2019re comfortably clear of the \u20b912L rebate threshold.'
+      ) + '</div>' +
+    '</div>'
+  );
+
+  var dh = result.deductionHeadroom;
+  var dhDetail = DEDUCTION_HEADROOM_COPY[dh.reasonCode];
+  if (dh.reasonCode === 'MAXING_80C_SAVES') {
+    dhDetail = 'Maxing your remaining ' + formatRupees(dh.remainingHeadroom) + ' of 80C room would save you ' + formatRupees(dh.potentialSavings) + '.';
+  }
+  cards.push(
+    '<div class="signal-card">' +
+      '<div class="signal-title">80C headroom</div>' +
+      '<div class="signal-value">' + (dh.applicable ? formatRupees(dh.potentialSavings) : '\u2014') + '</div>' +
+      '<div class="signal-detail">' + dhDetail + '</div>' +
+    '</div>'
+  );
+
+  var sb = result.slabBoundary;
+  var sbDetail = SLAB_BOUNDARY_COPY[sb.reasonCode];
+  if (sb.reasonCode === 'WITHIN_SLAB') {
+    sbDetail = formatRupees(sb.distanceToNextSlab) + ' more taxable income and your rate jumps from ' + (sb.currentMarginalRate * 100) + '% to ' + (sb.nextMarginalRate * 100) + '%.';
+  }
+  cards.push(
+    '<div class="signal-card">' +
+      '<div class="signal-title">Next slab boundary</div>' +
+      '<div class="signal-value">' + (sb.distanceToNextSlab !== null ? formatRupees(sb.distanceToNextSlab) : (sb.currentMarginalRate * 100) + '% (top slab)') + '</div>' +
+      '<div class="signal-detail">' + sbDetail + '</div>' +
+    '</div>'
+  );
+
+  document.getElementById('signalCards').innerHTML = cards.join('');
+}
+
+document.getElementById('incomeForm').addEventListener('submit', async function (e) {
+  e.preventDefault();
+  var grossIncome = Number(document.getElementById('grossIncome').value);
+  if (!grossIncome || grossIncome < 0) return;
+
+  var deductions80c = Number(document.getElementById('deductions80c').value) || 0;
+  var deductions80d = Number(document.getElementById('deductions80d').value) || 0;
+
+  var btn = document.getElementById('calcBtn');
+  var statusEl = document.getElementById('calcStatus');
+  var offlineNote = document.getElementById('offlineNote');
+  btn.disabled = true;
+  btn.textContent = 'Calculating\u2026';
+  statusEl.textContent = '';
+  statusEl.className = 'status-line';
+  offlineNote.classList.remove('visible');
+
+  var result;
+  try {
+    result = await callApi(API.calculate, {
+      grossIncome: grossIncome,
+      isSalaried: isSalaried,
+      deductions80c: deductions80c,
+      deductions80d: deductions80d,
+    });
+  } catch (err) {
+    // Same fallback philosophy as the backend's own Bedrock handling:
+    // on ANY failure (network, CORS, 5xx), degrade to a known-good local
+    // computation rather than show a dead form -- and say so, visibly.
+    console.error('Live /calculate call failed, using offline fallback:', err.message);
+    result = analyzeOptimization(grossIncome, isSalaried, deductions80c, deductions80d);
+    offlineNote.classList.add('visible');
+  }
+
+  lastResult = result;
+  renderResults(result);
+
+  btn.disabled = false;
+  btn.textContent = 'Calculate';
+
+  var reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  document.getElementById('results').classList.add('visible');
+  document.getElementById('results').scrollIntoView({ behavior: reduceMotion ? 'auto' : 'smooth', block: 'nearest' });
+});
+
+/* ---- Q&A (/explain) ---- */
+function appendChatBubble(role, html) {
+  var container = document.getElementById('chatMessages');
+  var bubble = document.createElement('div');
+  bubble.className = 'chat-bubble ' + role;
+  bubble.innerHTML = html;
+  container.appendChild(bubble);
+  container.scrollTop = container.scrollHeight;
+}
+
+appendChatBubble('user', 'What is 80C?');
+appendChatBubble('assistant', 'Section 80C lets you reduce your taxable income by up to \u20b91,50,000 a year \u2014 but only if you choose the Old Regime. It covers things like PPF, ELSS funds, life insurance premiums, and home loan principal repayment.');
+
+async function askQuestion() {
+  var input = document.getElementById('chatInput');
+  var question = input.value.trim();
+  if (!question) return;
+  input.value = '';
+  appendChatBubble('user', escapeHtml(question));
+
+  var chatBtn = document.getElementById('chatBtn');
+  chatBtn.disabled = true;
+
+  try {
+    var body = { question: question };
+    if (lastResult) body.calculatedResult = lastResult;
+    var result = await callApi(API.explain, body);
+
+    if (result.matched) {
+      // phrased:false is the CURRENT expected state (Bedrock access still
+      // pending) -- shown as a visible badge, not hidden, per the explicit
+      // "gracefully and visibly" instruction.
+      var badge = result.phrased ? '' : '<span class="fallback-badge">From our tax reference</span><br>';
+      appendChatBubble('assistant', badge + escapeHtml(result.explanation));
+    } else {
+      appendChatBubble('assistant', 'I don\u2019t have a reference for that specific question yet \u2014 try asking about 80C, 80D, the rebate, or which regime is better.');
+    }
+  } catch (err) {
+    console.error('explain call failed:', err.message);
+    appendChatBubble('assistant', 'Couldn\u2019t reach the answer service just now \u2014 please try again in a moment.');
+  }
+
+  chatBtn.disabled = false;
+}
+
+document.getElementById('chatBtn').addEventListener('click', askQuestion);
+document.getElementById('chatInput').addEventListener('keydown', function (e) {
+  if (e.key === 'Enter') askQuestion();
+});
+</script>
+</body>
+</html>

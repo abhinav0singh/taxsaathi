@@ -5,17 +5,45 @@ Description: TaxSaathi - calculate/parseIncome/explain Lambdas + HTTP API + Dyna
 Parameters:
   BedrockModelId:
     Type: String
+    Default: apac.amazon.nova-lite-v1:0
     Description: >-
-      Bedrock foundation model ID to invoke (e.g. an Anthropic Claude model
-      ID). VERIFY the exact current ID in the Bedrock console's Model
-      catalog for ap-south-1 before deploying -- not hardcoded on purpose,
-      since this can't be confirmed from outside your AWS account.
+      Bedrock INFERENCE PROFILE id, used as the Converse API's modelId and
+      to scope the inference-profile IAM resource. Includes the apac.
+      geography prefix -- amazon.nova-lite-v1:0 is not directly hosted in
+      ap-south-1 (confirmed against AWS's model-card region table), so
+      this profile routes the request to wherever in APAC actually hosts
+      it (Tokyo/Sydney/Jakarta).
+  BedrockUnderlyingModelId:
+    Type: String
+    Default: amazon.nova-lite-v1:0
+    Description: >-
+      The BARE model id, WITHOUT the apac. prefix. Cross-region inference
+      profile invocation is authorized against TWO separate IAM resources:
+      the inference-profile ARN (uses BedrockModelId, WITH the prefix) and
+      the underlying foundation-model ARN in each destination region (uses
+      THIS value, WITHOUT the prefix -- the prefix is specific to the
+      inference-profile resource type and does not appear in the
+      foundation-model resource name). Reusing one parameter for both
+      previously caused a real, deployed AccessDeniedException naming the
+      foundation-model resource even though the inference-profile
+      permission was correct -- this split exists specifically to prevent
+      that mismatch recurring silently.
 
 Globals:
   Function:
-    Runtime: nodejs22.x   # verify this is still a current supported runtime in the console before deploying
+    Runtime: nodejs22.x
     Timeout: 10
     MemorySize: 128
+  HttpApi:
+    CorsConfiguration:
+      AllowOrigins:
+        - "*"
+      AllowMethods:
+        - POST
+        - OPTIONS
+      AllowHeaders:
+        - Content-Type
+      MaxAge: 300
 
 Resources:
   CalculateFunction:
@@ -24,12 +52,6 @@ Resources:
       FunctionName: taxsaathi-calculate
       CodeUri: lambda/
       Handler: app.handler
-      # No Policies here on purpose. SSD.md section 3: this function needs
-      # nothing beyond basic CloudWatch logging, which SAM's auto-generated
-      # execution role already grants by default when no Role/Policies are
-      # specified. Adding Policies here would be adding permissions this
-      # function doesn't need -- the absence of this block IS the
-      # least-privilege choice, not a gap.
       Events:
         CalculateApi:
           Type: HttpApi
@@ -37,10 +59,6 @@ Resources:
             Path: /calculate
             Method: POST
 
-  # TaxExplainers table (SSD.md section 7): single-table key-value lookup,
-  # no sort key needed -- AWS::Serverless::SimpleTable is SAM's simplified
-  # shorthand for exactly this shape (it expands to a full
-  # AWS::DynamoDB::Table underneath, just with less boilerplate to write).
   TaxExplainersTable:
     Type: AWS::Serverless::SimpleTable
     Properties:
@@ -48,11 +66,6 @@ Resources:
       PrimaryKey:
         Name: topic
         Type: String
-      # No ProvisionedThroughput specified -- SimpleTable defaults to
-      # on-demand (PAY_PER_REQUEST) billing when this is omitted, which is
-      # what we want: no capacity to plan for 4 rows and unpredictable
-      # demo traffic. (BillingMode isn't a valid property on SimpleTable
-      # directly -- caught by cfn-lint, corrected here.)
       SSESpecification:
         SSEEnabled: true
 
@@ -62,28 +75,42 @@ Resources:
       FunctionName: taxsaathi-explain
       CodeUri: lambda-explain/
       Handler: app.handler
-      Timeout: 15   # Bedrock calls take longer than a pure computation -- override the 10s Global default
+      Timeout: 15
       Environment:
         Variables:
           TABLE_NAME: !Ref TaxExplainersTable
           BEDROCK_MODEL_ID: !Ref BedrockModelId
       Policies:
-        # DynamoDBReadPolicy is a SAM Policy Template -- a named, pre-built
-        # least-privilege IAM policy shape (GetItem/Query/Scan/BatchGetItem
-        # on exactly the table you name, nothing else -- no write access,
-        # no other tables). This is what SSD.md section 3 means by "SAM
-        # makes this natural" -- you name the shape, SAM writes the IAM JSON.
         - DynamoDBReadPolicy:
             TableName: !Ref TaxExplainersTable
-        # No SAM Policy Template exists for Bedrock as of this template, so
-        # this is a hand-written inline statement instead -- scoped to
-        # exactly one action (InvokeModel, not ListFoundationModels or
-        # anything else) on exactly one model ARN (not "*"), per SSD.md
-        # section 3's "InvokeModel only" requirement.
         - Statement:
-            - Effect: Allow
+            - Sid: InvokeApacInferenceProfile
+              Effect: Allow
               Action: bedrock:InvokeModel
-              Resource: !Sub "arn:aws:bedrock:${AWS::Region}::foundation-model/${BedrockModelId}"
+              Resource: !Sub "arn:aws:bedrock:${AWS::Region}:${AWS::AccountId}:inference-profile/${BedrockModelId}"
+            - Sid: ResolveInferenceProfile
+              # Not confirmed by a deployed error yet -- AWS's inference-
+              # profile prerequisites doc lists this as required to
+              # resolve a profile to its underlying model. Added
+              # defensively since it's a cheap, read-only grant, not
+              # because we've seen it fail without it.
+              Effect: Allow
+              Action: bedrock:GetInferenceProfile
+              Resource: !Sub "arn:aws:bedrock:${AWS::Region}:${AWS::AccountId}:inference-profile/${BedrockModelId}"
+            - Sid: InvokeUnderlyingFoundationModelAnyRegion
+              # Live testing showed AccessDeniedException on THREE
+              # different regions across three deploys (ap-southeast-2,
+              # ap-south-1, ap-northeast-2) -- the inference profile
+              # routes across more regions than any docs table listed,
+              # and enumerating them one at a time was a losing game
+              # against a moving target. Region wildcarded deliberately;
+              # model name and action stay exact. This is the realistic
+              # middle ground for cross-region profiles, not a shortcut
+              # taken out of laziness -- "cross-region" inherently means
+              # the destination isn't fixed in advance.
+              Effect: Allow
+              Action: bedrock:InvokeModel
+              Resource: !Sub "arn:aws:bedrock:*::foundation-model/${BedrockUnderlyingModelId}"
       Events:
         ExplainApi:
           Type: HttpApi
@@ -97,18 +124,24 @@ Resources:
       FunctionName: taxsaathi-parse-income
       CodeUri: lambda-parse-income/
       Handler: app.handler
-      Timeout: 15   # same reasoning as ExplainFunction -- Bedrock latency
+      Timeout: 15
       Environment:
         Variables:
           BEDROCK_MODEL_ID: !Ref BedrockModelId
       Policies:
-        # Same scoping as ExplainFunction above: InvokeModel only, one
-        # model ARN only -- no DynamoDB access, since this function never
-        # touches the table.
         - Statement:
-            - Effect: Allow
+            - Sid: InvokeApacInferenceProfile
+              Effect: Allow
               Action: bedrock:InvokeModel
-              Resource: !Sub "arn:aws:bedrock:${AWS::Region}::foundation-model/${BedrockModelId}"
+              Resource: !Sub "arn:aws:bedrock:${AWS::Region}:${AWS::AccountId}:inference-profile/${BedrockModelId}"
+            - Sid: ResolveInferenceProfile
+              Effect: Allow
+              Action: bedrock:GetInferenceProfile
+              Resource: !Sub "arn:aws:bedrock:${AWS::Region}:${AWS::AccountId}:inference-profile/${BedrockModelId}"
+            - Sid: InvokeUnderlyingFoundationModelAnyRegion
+              Effect: Allow
+              Action: bedrock:InvokeModel
+              Resource: !Sub "arn:aws:bedrock:*::foundation-model/${BedrockUnderlyingModelId}"
       Events:
         ParseIncomeApi:
           Type: HttpApi
