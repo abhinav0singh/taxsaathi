@@ -7,7 +7,7 @@ s3_prefix = "taxsaathi-backend"
 confirm_changeset = true
 capabilities = "CAPABILITY_IAM"
 image_repositories = []
-parameter_overrides = "BedrockModelId=\"anthropic.claude-3-haiku-20240307-v1:0\""
+parameter_overrides = "BedrockModelId=\"apac.amazon.nova-lite-v1:0\" BedrockUnderlyingModelId=\"amazon.nova-lite-v1:0\""
 
 [default.global.parameters]
 region = "ap-south-1"
