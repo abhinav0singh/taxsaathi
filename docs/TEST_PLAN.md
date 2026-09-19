@@ -77,31 +77,44 @@ machine to confirm these pass locally, not just in the other chat's sandbox.
 
 ## 5. Bedrock
 
-**Status as of 17 Sept, evening:** Model access requested for `ap-south-1`,
-approval pending — outside our control, not blocking Stage 6. Fallback
-logic verified twice over: locally via mocked Bedrock client (29+26 tests,
-independently re-run and confirmed — see docs/SSD.md's verification
-table), and live against the deployed endpoints, per user report (raw
-output not yet independently cross-checked here — pending, non-blocking).
-Only the actual live-model-quality checks below remain genuinely open,
-and they require account approval, not more engineering.
+**Status as of 19 Sept:** Migrated from Anthropic Claude (Bedrock model
+access request never resolved) to Amazon Nova Lite via a cross-region
+inference profile (`apac.amazon.nova-lite-v1:0`), Converse API. This did
+NOT resolve live model calls -- a deeper account-level cause was found and
+independently confirmed: every Bedrock on-demand inference quota on this
+account is provisioned at 0, including Amazon's own first-party Titan
+models (checked directly in the Service Quotas console, screenshot
+attached to AWS Support case 178972059100386, filed 18 Sept). This is an
+AWS account-level block, outside our control, not fixable by any
+IAM/template/model change -- confirmed by the fact that IAM was fixed and
+verified correct (no more AccessDeniedException) and the failure mode
+changed to ValidationException: Operation not allowed instead, which
+matches AWS's own documented pattern for this exact account-level issue.
 
-- [x] **Fallback test — parseIncome:** verified locally (mocked Bedrock
-      throwing + timing out, 200/parsed:false both cases) AND reported
-      live. Confirms SSD.md section 5 behavior.
-- [x] **Fallback test — explain:** verified locally (mocked failure, raw
-      snippet returned unphrased) AND reported live.
-- [x] **IAM check:** confirmed directly from the real `template.yaml` —
-      `explain` has `DynamoDBReadPolicy` + `bedrock:InvokeModel` scoped to
-      one model ARN; `parseIncome` has `bedrock:InvokeModel` only, no
-      DynamoDB access. No broader Bedrock permissions on either.
-- [ ] `parseIncome`: known test phrases (at least 5, varying how income
-      is described) produce correctly structured output from a REAL model
-      call. **Blocked on Bedrock model access approval**, not on code —
-      code path is already verified with a mocked model response.
-- [ ] `explain`: given a snippet + a sample calculated result + optimizer
-      output, a REAL model call produces a grounded response (doesn't
-      contradict the snippet or invent numbers). **Same block as above.**
+Fallback logic is fully verified, independently, more than once: locally
+via mocked Bedrock client (17+21 = 38 tests, both success and
+throw/timeout paths, re-run fresh against the live repo files on 19 Sept),
+and LIVE against the deployed endpoints -- confirmed via `.phrased`/
+`.parsed` returning `false` and the raw reference answer/manual-form
+message returned correctly, with the exact CloudWatch error line pulled
+and cross-checked, not just trusted from a status code.
+
+- [x] **Fallback test — parseIncome:** verified locally (mocked) AND live
+      (real deployed endpoint, real CloudWatch log showing the real
+      ValidationException, `parsed:false` returned correctly).
+- [x] **Fallback test — explain:** verified locally (mocked) AND live
+      (same, `phrased:false`, raw snippet returned unphrased).
+- [x] **IAM check:** confirmed directly from the real `template.yaml` AND
+      from the actual CloudFormation changeset of a real deploy — `explain`
+      has `DynamoDBReadPolicy` + `bedrock:InvokeModel`/`GetInferenceProfile`
+      scoped to one inference profile + its underlying model; `parseIncome`
+      has the Bedrock permissions only, no DynamoDB access.
+- [ ] `parseIncome`: known test phrases (at least 5) produce correctly
+      structured output from a REAL model call. **Blocked on the AWS
+      Support case above**, not on code or IAM -- both are independently
+      confirmed correct.
+- [ ] `explain`: a REAL model call produces a grounded response. **Same
+      block as above.**
 
 ## 6. Frontend
 

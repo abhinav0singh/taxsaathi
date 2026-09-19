@@ -85,7 +85,14 @@ unused deduction headroom) a bare calculator wouldn't point out.
 - Support for capital gains, business income, or other complex income types
   beyond salary/freelance.
 - Surcharge slabs beyond the first (₹50L+) threshold.
-- Multi-year comparison or tax planning advice beyond the current FY.
+- Forward-looking, multi-year tax PLANNING advice ("what should I do next
+  year"). CLARIFICATION (added when the historical comparison feature was
+  built): a backward-looking, illustrative "then vs. now" comparison using
+  a real prior-year rule change (FY2024-25's rebate threshold vs today's)
+  is judged to be in scope -- it reuses existing computation with zero new
+  inputs and reinforces the product's own pitch, rather than offering
+  planning advice. This line was consciously narrowed for that reason, not
+  silently overridden -- see calculator.js's compareAcrossYears.
 - Login/auth/accounts — stateless, single-session tool for the demo.
 - Full vector-embedding RAG — keyword retrieval-lite is the deliberate scope.
 - Modeling HRA, home loan interest (Section 24b), or employer NPS

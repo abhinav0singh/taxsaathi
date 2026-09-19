@@ -1,9 +1,9 @@
 # TaxSaathi — Frontend Design Document
 
-**Status:** Design direction locked (v2 — replaces the earlier Hubtown/dark
-"tax terrain" concept entirely, see revision note). Not yet built. This is
-Stage 6 — don't start building until backend stages (Lambda/API Gateway,
-DynamoDB, Bedrock) are working, per docs/PRD.md priority order.
+**Status:** Built and deployed (v3 — see v3 addendum below for what
+changed since the v2 design direction was locked; v2 itself replaced the
+earlier Hubtown/dark "tax terrain" concept entirely, see original revision
+note further down).
 
 **Why this is worth real design effort, not just functional UI:** "Best
 UI" is a named ₹1,00,000 prize category in this hackathon, open to either
@@ -16,6 +16,24 @@ blueprint/architectural drawing aesthetic — light background, precise
 technical linework, warm wood-tone accents, a rendered structure emerging
 out of a schematic. This isn't a hero-only treatment layered onto the old
 plan; it's the visual language for the whole site, hero through results.
+
+**Revision note (v3, added post-launch, not before -- this documents what
+was actually built, in response to real iteration during build/polish):**
+- **Palette expanded, not replaced:** ocean-blue (`#0369a1`/`#0ea5e9`,
+  SVG gradient `#38bdf8`→`#0c4a6e`) is now the PRIMARY structural color
+  (links, card borders/badges, savings emphasis, the roofline gradient).
+  Wood-tone amber is retained but scoped specifically to buttons/CTAs
+  (`hero-cta`, `calc-btn`, the segmented toggle, the chat Ask button) --
+  the cliff-edge warning accent is unchanged, still its own reserved hue.
+- **Brand mark added:** wood-toned Scrabble-style tiles spelling "TAX",
+  with "Saathi" beneath in a cursive script font, forming "TaxSaathi"
+  read top-to-bottom -- a hero element not specified in v2, added during
+  polish.
+- **Site nav added:** a slim links row (About / FAQ / Tax Calc) above the
+  brand mark, scrolling to the corresponding page section.
+- **About and FAQ sections added** below the calculator flow, at the same
+  calm density as the calculator input step -- not covered by v2's
+  hero/input/results density table, since they didn't exist in that plan.
 
 ## 1. The core idea
 
