@@ -1,22 +1,28 @@
 # TaxSaathi — Test Plan
 
-**Revision note (v2):** Adds tests for the optimizer function, Bedrock
-fallback paths, and IAM role scoping verification, per SSD.md v2.
+**Revision note (v3): a pre-submission review found a real, severe bug —
+the New Regime rebate was a hard cliff, not the real marginal-relief rule
+(Section 87A, Finance Bill 2025). At taxable ₹12.1L this produced ₹61,500
+instead of the correct ₹10,400. Also found: Old Regime's ₹50,000 salaried
+standard deduction was entirely missing, biasing every comparison toward
+New. Both fixed, verified two independent ways (Python, separate from the
+JS, then cross-checked against real published examples), and the entire
+test suite for this file was rebuilt from fresh golden values rather than
+patched — the old 43 tests encoded the same wrong assumption the code had,
+so they never could have caught this.**
 
-Principle: each stage gets tests before we move to the next, so bugs are
-caught where they're cheap to fix, not after everything's wired together.
+## 1. Calculator (`calculator.js`) — DONE (rebuilt, not just patched)
 
-## 1. Calculator (`calculator.js`) — DONE
-
-Run: `node calculator/test_calculator.js`
+Run: `node calculator/test_calculator.js` — 41 checks, all passing.
 
 Covers:
-- [x] New regime: income under 12L salaried -> rebate zeroes tax
-- [x] New regime: income just above threshold -> rebate does NOT apply
-- [x] New regime: mid-slab freelancer case -> correct slab math + cess
-- [x] Old regime: no deductions -> correct slab math + cess, no rebate
-- [x] Old regime: with 80C dropping income under 5L -> rebate zeroes tax
-- [x] Old regime: above rebate threshold -> rebate does NOT apply
+- [x] Marginal relief: taxable ₹12.1L -> ₹10,400 (not the old, wrong ₹61,500)
+- [x] Salaried gross ₹12.75L/₹12.8L/₹13.5L -- boundary and past-wall-zone cases
+- [x] Old Regime standard deduction (₹50,000, salaried) is actually applied
+- [x] Old Regime 5L/5.1L boundary (Old Regime has no marginal relief -- confirmed)
+- [x] 9L salaried with 1.5L 80C, 15L freelance -- explicit golden cases from the review
+- [x] 80D cap (₹25,000) and the new otherOldRegimeDeductions field
+- [x] Rebate WALL zone proximity (renamed from "cliff" -- see SSD.md)
 - [x] Regime comparison picks the lower-tax option correctly
 
 Still missing (add if time allows):

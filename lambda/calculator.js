@@ -36,8 +36,32 @@ const OLD_REGIME_SLABS = [
 const CESS_RATE = 0.04;                    // Health & Education Cess, on (tax + surcharge)
 const SURCHARGE_THRESHOLD = 5000000;       // ₹50L — above this, surcharge kicks in
 const STANDARD_DEDUCTION_SALARIED = 75000; // New regime, salaried only
+const OLD_REGIME_STANDARD_DEDUCTION_SALARIED = 50000; // Old regime, salaried only -- confirmed
+  // via multiple independent sources (taxbuddy.com, cleartax.in) as ₹50,000
+  // for FY 2026-27, unchanged from prior years, distinct from New Regime's
+  // ₹75,000. This was MISSING entirely from earlier versions of this
+  // calculator -- every salaried Old-vs-New comparison was biased toward
+  // New as a result. Fixed here, not silently.
 const NEW_REGIME_REBATE_THRESHOLD = 1200000;  // New regime 87A: taxable income up to 12L -> zero tax
 const OLD_REGIME_REBATE_THRESHOLD = 500000;   // Old regime 87A: taxable income up to 5L -> zero tax (smaller, separate provision)
+
+// Marginal relief zone end (New Regime, FY2026-27): the taxable-income point
+// where the marginal-relief formula (below) stops binding and full slab tax
+// applies again. Derived from the 15% marginal rate above the 12L threshold:
+// slabTax(t) = 60000 + 0.15*(t-1200000); relief caps it at (t-1200000); they
+// meet where 60000 = 0.85*(t-1200000) => t = 1200000 + 60000/0.85.
+// Independently confirmed against real sources (~₹12,70,500-12,70,588) --
+// not just derived in isolation.
+const NEW_REGIME_RELIEF_ZONE_END = 1200000 + 60000 / 0.85; // ≈ 1,270,588.24
+
+const OLD_REGIME_80D_CAP = 25000; // Section 80D, self + family, non-senior.
+  // SIMPLIFICATION, documented not hidden: real law allows higher limits
+  // for senior citizens (₹50,000) and senior-citizen parents (up to
+  // ₹50,000 more, overall ceiling ₹1L) -- this calculator doesn't model
+  // age/senior-citizen status at all, so it applies the single, more
+  // conservative non-senior cap uniformly. A senior-citizen user would see
+  // a LOWER 80D benefit here than they're actually entitled to -- flagged
+  // in the README and the frontend, not silently capped without saying so.
 
 /**
  * Applies a progressive slab structure to taxable income.
@@ -61,19 +85,28 @@ function computeSlabTax(taxableIncome, slabs) {
 }
 
 /**
- * Section 87A rebate — New Regime.
+ * Section 87A rebate — New Regime, WITH marginal relief.
  *
- * A rebate differs from a deduction: a deduction lowers taxable income
- * *before* tax is computed; a rebate wipes out tax *after* it's computed,
- * but only below a threshold.
+ * CORRECTED (was a real, confirmed bug): the previous version treated this
+ * as a hard cliff -- ₹0 tax at exactly 12L, full slab tax the instant
+ * taxable income exceeded it by even ₹1. That is NOT how the law works.
+ * Finance Bill 2025 / Section 115BAC(1A) includes marginal relief: once
+ * taxable income exceeds ₹12L, tax payable is capped at the amount by
+ * which income exceeds ₹12L -- not the full slab tax. Verified against
+ * multiple independent tax-law sources, all citing the identical example
+ * this calculator now matches exactly: taxable ₹12,10,000 -> ₹10,000 tax
+ * before cess (not ₹61,500), with relief phasing out entirely by
+ * approximately ₹12,70,588.
  *
- * NOTE: this is a cliff-edge, not a gradual phase-out. Cross the threshold
- * by ₹1 and the ENTIRE tax becomes payable, not just tax on the excess.
- * That's a real quirk of the law, not a bug in this code.
+ * This is a REAL rule, not a cliff -- the correct mental model is a "wall":
+ * once past ₹12L, roughly every additional ₹1 of income costs roughly ₹1
+ * of tax (a ~100%+ effective marginal rate zone, with cess) until relief
+ * phases out and normal slab progression resumes.
  */
-function applyNewRegimeRebate(taxableIncome, tax) {
+function applyNewRegimeRebate(taxableIncome, slabTax) {
   if (taxableIncome <= NEW_REGIME_REBATE_THRESHOLD) return 0;
-  return tax;
+  const excessOverThreshold = taxableIncome - NEW_REGIME_REBATE_THRESHOLD;
+  return Math.min(slabTax, excessOverThreshold);
 }
 
 /**
@@ -137,12 +170,31 @@ function calculateNewRegime(grossIncome, isSalaried = true) {
 
 /**
  * Full Old Regime computation, in order:
- * gross income -> minus 80C/80D deductions -> slab tax -> 87A rebate ->
- * surcharge -> cess -> final tax
+ * gross income -> standard deduction (if salaried) -> minus 80C/80D/other
+ * deductions -> slab tax -> 87A rebate (NO marginal relief in Old Regime --
+ * confirmed, this provision is New-Regime-only) -> surcharge -> cess ->
+ * final tax.
+ *
+ * CORRECTED: isSalaried and its ₹50,000 standard deduction were entirely
+ * missing before -- confirmed via multiple sources that this is real,
+ * distinct from New Regime's ₹75,000, and its absence biased every
+ * salaried Old-vs-New comparison toward New. 80D is now capped (see
+ * OLD_REGIME_80D_CAP for the documented simplification). A new
+ * otherOldRegimeDeductions parameter covers HRA / home loan interest /
+ * NPS 80CCD(1B) etc. as ONE combined figure, not modeled individually --
+ * each has its own real eligibility rules (HRA especially, which depends
+ * on rent paid, basic salary, and city) that this calculator does not
+ * verify; the user supplies the number, same trust model as 80C/80D.
  */
-function calculateOldRegime(grossIncome, deductions80c = 0, deductions80d = 0) {
+function calculateOldRegime(grossIncome, isSalaried = true, deductions80c = 0, deductions80d = 0, otherOldRegimeDeductions = 0) {
+  const standardDeduction = isSalaried ? OLD_REGIME_STANDARD_DEDUCTION_SALARIED : 0;
   const cappedDeductions80c = Math.min(deductions80c, 150000); // 80C capped at 1.5L by law
-  const taxableIncome = Math.max(0, grossIncome - cappedDeductions80c - deductions80d);
+  const cappedDeductions80d = Math.min(deductions80d, OLD_REGIME_80D_CAP);
+  const otherDeductions = Math.max(0, otherOldRegimeDeductions);
+  const taxableIncome = Math.max(
+    0,
+    grossIncome - standardDeduction - cappedDeductions80c - cappedDeductions80d - otherDeductions
+  );
 
   const slabTax = computeSlabTax(taxableIncome, OLD_REGIME_SLABS);
   const taxAfterRebate = applyOldRegimeRebate(taxableIncome, slabTax);
@@ -153,8 +205,10 @@ function calculateOldRegime(grossIncome, deductions80c = 0, deductions80d = 0) {
   return {
     regime: "old",
     grossIncome,
+    standardDeduction,
     deductions80c: cappedDeductions80c,
-    deductions80d,
+    deductions80d: cappedDeductions80d,
+    otherOldRegimeDeductions: otherDeductions,
     taxableIncome,
     slabTax: round2(slabTax),
     rebateApplied: slabTax > 0 && taxAfterRebate === 0,
@@ -165,9 +219,9 @@ function calculateOldRegime(grossIncome, deductions80c = 0, deductions80d = 0) {
 }
 
 /** Runs both regimes and returns a side-by-side comparison. */
-function compareRegimes(grossIncome, isSalaried = true, deductions80c = 0, deductions80d = 0) {
+function compareRegimes(grossIncome, isSalaried = true, deductions80c = 0, deductions80d = 0, otherOldRegimeDeductions = 0) {
   const newRegime = calculateNewRegime(grossIncome, isSalaried);
-  const oldRegime = calculateOldRegime(grossIncome, deductions80c, deductions80d);
+  const oldRegime = calculateOldRegime(grossIncome, isSalaried, deductions80c, deductions80d, otherOldRegimeDeductions);
 
   const recommended = newRegime.finalTax <= oldRegime.finalTax ? "new" : "old";
   const savings = Math.abs(newRegime.finalTax - oldRegime.finalTax);
@@ -195,7 +249,6 @@ function round2(n) {
 // Heuristic threshold below is a deliberate hackathon-speed judgment call,
 // not a value from tax law. Flagging it explicitly so it's easy to spot
 // and revisit if time allows:
-const REBATE_CLIFF_PROXIMITY_BAND = 50000; // "near" the 87A cliff = within ±₹50,000 of it
 
 /**
  * Within-regime lever #1: if Old Regime is the CURRENT recommendation, how
@@ -208,7 +261,7 @@ const REBATE_CLIFF_PROXIMITY_BAND = 50000; // "near" the 87A cliff = within ±�
  * cross-regime "crossover" version of this function — see the note at the
  * bottom of test_calculator.js for why that approach was dropped.)
  */
-function analyzeDeductionHeadroom(grossIncome, deductions80c = 0, deductions80d = 0, recommendedRegime) {
+function analyzeDeductionHeadroom(grossIncome, isSalaried = true, deductions80c = 0, deductions80d = 0, otherOldRegimeDeductions = 0, recommendedRegime) {
   if (recommendedRegime !== "old") {
     return {
       applicable: false,
@@ -228,8 +281,8 @@ function analyzeDeductionHeadroom(grossIncome, deductions80c = 0, deductions80d 
     };
   }
 
-  const currentTax = calculateOldRegime(grossIncome, deductions80c, deductions80d).finalTax;
-  const maxedTax = calculateOldRegime(grossIncome, deductions80c + remainingHeadroom, deductions80d).finalTax;
+  const currentTax = calculateOldRegime(grossIncome, isSalaried, deductions80c, deductions80d, otherOldRegimeDeductions).finalTax;
+  const maxedTax = calculateOldRegime(grossIncome, isSalaried, deductions80c + remainingHeadroom, deductions80d, otherOldRegimeDeductions).finalTax;
   const savings = round2(currentTax - maxedTax);
 
   if (savings <= 0) {
@@ -289,7 +342,7 @@ function findSlabBoundaryDistance(taxableIncome, slabs) {
   };
 }
 
-function analyzeSlabBoundary(grossIncome, isSalaried = true, deductions80c = 0, deductions80d = 0, recommendedRegime) {
+function analyzeSlabBoundary(grossIncome, isSalaried = true, deductions80c = 0, deductions80d = 0, otherOldRegimeDeductions = 0, recommendedRegime) {
   let taxableIncome;
   let slabs;
 
@@ -298,8 +351,10 @@ function analyzeSlabBoundary(grossIncome, isSalaried = true, deductions80c = 0, 
     taxableIncome = Math.max(0, grossIncome - standardDeduction);
     slabs = NEW_REGIME_SLABS;
   } else {
-    const cappedDeductions80c = Math.min(deductions80c, 150000);
-    taxableIncome = Math.max(0, grossIncome - cappedDeductions80c - deductions80d);
+    // Delegates to calculateOldRegime rather than recomputing taxable
+    // income here independently -- avoids the two calculations silently
+    // drifting apart the way the missing standard deduction did before.
+    taxableIncome = calculateOldRegime(grossIncome, isSalaried, deductions80c, deductions80d, otherOldRegimeDeductions).taxableIncome;
     slabs = OLD_REGIME_SLABS;
   }
 
@@ -307,40 +362,46 @@ function analyzeSlabBoundary(grossIncome, isSalaried = true, deductions80c = 0, 
 }
 
 /**
- * Rebate cliff-edge proximity — New Regime only.
+ * Rebate WALL proximity — New Regime only. (Function name kept as-is since
+ * it's part of the public API other code calls by name; the concept and
+ * output it describes has changed -- see below.)
  *
- * The 87A rebate in the new regime is a cliff (see applyNewRegimeRebate's
- * comment): taxable income of exactly 12L pays zero tax; 12L + ₹1 pays tax
- * on the FULL amount, not just the ₹1 over. This flags when a user is close
- * to that cliff on either side, since it's worth knowing about even though
- * (unlike the crossover above) there's no deduction lever to pull here —
- * the new regime doesn't accept 80C/80D deductions at all.
+ * CORRECTED framing: this is not a cliff. With marginal relief in place
+ * (see applyNewRegimeRebate), crossing ₹12L taxable income doesn't zero
+ * out to full tax instantly -- it enters a WALL zone (taxable ₹12L to
+ * ~₹12,70,588) where each additional rupee of income costs very close to
+ * a full rupee of tax, before easing back to normal slab progression.
+ * That's the real, striking, verifiable fact -- not a hard drop.
  *
- * Threshold note: taxable income threshold is always ₹12L, but the GROSS
- * income threshold differs by ₹75,000 (the standard deduction) depending on
- * salaried status — ₹12.75L gross for salaried, ₹12L gross for freelance.
- * That's the "12L / 12.75L" distinction from SSD.md section 6.
+ * Threshold note: taxable income boundary is always ₹12L / ~₹12.7L
+ * regardless of salaried status; the GROSS income equivalent shifts by
+ * the ₹75,000 standard deduction -- ₹12.75L gross for salaried is where
+ * the wall begins, ₹12L gross for freelance.
  */
 function checkRebateCliffProximity(grossIncome, isSalaried = true) {
   const standardDeduction = isSalaried ? STANDARD_DEDUCTION_SALARIED : 0;
   const taxableIncome = Math.max(0, grossIncome - standardDeduction);
-  const distance = taxableIncome - NEW_REGIME_REBATE_THRESHOLD;
 
-  if (distance > 0 && distance <= REBATE_CLIFF_PROXIMITY_BAND) {
+  const inWallZone = taxableIncome > NEW_REGIME_REBATE_THRESHOLD && taxableIncome <= NEW_REGIME_RELIEF_ZONE_END;
+  if (inWallZone) {
     return {
-      nearCliff: true,
-      side: "just_above",
-      distanceFromThreshold: round2(distance),
-      reasonCode: "JUST_ABOVE_REBATE_CLIFF",
+      nearCliff: true, // field name kept for backward compatibility with existing callers
+      side: "in_wall_zone",
+      distanceFromThreshold: round2(taxableIncome - NEW_REGIME_REBATE_THRESHOLD),
+      distanceToWallEnd: round2(NEW_REGIME_RELIEF_ZONE_END - taxableIncome),
+      reasonCode: "IN_MARGINAL_RELIEF_WALL_ZONE",
     };
   }
 
-  if (distance <= 0 && Math.abs(distance) <= REBATE_CLIFF_PROXIMITY_BAND) {
+  const approachingBand = 50000; // heuristic, documented: "about to hit the wall" warning distance
+  const distanceBelow = NEW_REGIME_REBATE_THRESHOLD - taxableIncome;
+  if (distanceBelow > 0 && distanceBelow <= approachingBand) {
     return {
       nearCliff: true,
-      side: "just_below",
-      distanceFromThreshold: round2(Math.abs(distance)),
-      reasonCode: "SAFELY_JUST_BELOW_REBATE_CLIFF",
+      side: "approaching_wall",
+      distanceFromThreshold: round2(distanceBelow),
+      distanceToWallEnd: null,
+      reasonCode: "APPROACHING_REBATE_WALL",
     };
   }
 
@@ -348,7 +409,8 @@ function checkRebateCliffProximity(grossIncome, isSalaried = true) {
     nearCliff: false,
     side: null,
     distanceFromThreshold: null,
-    reasonCode: "NOT_NEAR_CLIFF",
+    distanceToWallEnd: null,
+    reasonCode: "NOT_NEAR_WALL",
   };
 }
 
@@ -375,17 +437,25 @@ const FY2024_25_STANDARD_DEDUCTION = 75000;  // unchanged from today, confirmed 
 
 /**
  * Generalized version of calculateNewRegime, parameterized by year config,
- * so old years can be computed without duplicating rebate/surcharge/cess
+ * so old years can be computed without duplicating slab/surcharge/cess
  * logic. calculateNewRegime() itself is untouched -- this is intentionally
  * a separate function, not a refactor of the already-verified one, to
  * avoid any risk of regressing tested behavior under time pressure.
+ *
+ * CORRECTED: now applies marginal relief using the YEAR-SPECIFIC threshold
+ * (₹7L for FY2024-25), not a hard cliff. Confirmed via search that
+ * marginal relief existed for the ₹7L threshold too (Finance Bill 2023),
+ * not just this year's ₹12L one -- the FY2024-25 comparison had the exact
+ * same class of bug as the current-year calculation did.
  */
 function calculateNewRegimeForYear(grossIncome, isSalaried, slabs, rebateThreshold, standardDeduction) {
   const stdDed = isSalaried ? standardDeduction : 0;
   const taxableIncome = Math.max(0, grossIncome - stdDed);
 
   const slabTax = computeSlabTax(taxableIncome, slabs);
-  const taxAfterRebate = taxableIncome <= rebateThreshold ? 0 : slabTax;
+  const taxAfterRebate = taxableIncome <= rebateThreshold
+    ? 0
+    : Math.min(slabTax, taxableIncome - rebateThreshold);
   const surcharge = applySurcharge(taxAfterRebate, taxableIncome);
   const cess = applyCess(taxAfterRebate + surcharge);
   const finalTax = taxAfterRebate + surcharge + cess;
@@ -453,11 +523,11 @@ function computeRateSummary(grossIncome, taxableIncome, finalTax, slabs) {
  * the recommendation label, so this function alone is a complete API
  * response with nothing further to assemble.
  */
-function analyzeOptimization(grossIncome, isSalaried = true, deductions80c = 0, deductions80d = 0) {
-  const comparison = compareRegimes(grossIncome, isSalaried, deductions80c, deductions80d);
+function analyzeOptimization(grossIncome, isSalaried = true, deductions80c = 0, deductions80d = 0, otherOldRegimeDeductions = 0) {
+  const comparison = compareRegimes(grossIncome, isSalaried, deductions80c, deductions80d, otherOldRegimeDeductions);
   const rebateCliffEdge = checkRebateCliffProximity(grossIncome, isSalaried);
-  const deductionHeadroom = analyzeDeductionHeadroom(grossIncome, deductions80c, deductions80d, comparison.recommended);
-  const slabBoundary = analyzeSlabBoundary(grossIncome, isSalaried, deductions80c, deductions80d, comparison.recommended);
+  const deductionHeadroom = analyzeDeductionHeadroom(grossIncome, isSalaried, deductions80c, deductions80d, otherOldRegimeDeductions, comparison.recommended);
+  const slabBoundary = analyzeSlabBoundary(grossIncome, isSalaried, deductions80c, deductions80d, otherOldRegimeDeductions, comparison.recommended);
   const historicalComparison = compareAcrossYears(grossIncome, isSalaried);
 
   const recommendedSlabs = comparison.recommended === "new" ? NEW_REGIME_SLABS : OLD_REGIME_SLABS;

@@ -15,6 +15,8 @@ const { BedrockRuntimeClient, ConverseCommand } = require('@aws-sdk/client-bedro
 
 const MODEL_ID = process.env.BEDROCK_MODEL_ID;
 const BEDROCK_TIMEOUT_MS = 8000;
+const MAX_INPUT_LENGTH = 300; // server-side cap on free-text length, independent of any frontend limit
+const MAX_SANE_INCOME = 1000000000; // ₹100 crore -- rejects a hallucinated/garbage model output, not a real limit
 
 const client = new BedrockRuntimeClient({});
 
@@ -49,7 +51,7 @@ function parseModelOutput(rawText) {
 
   const { grossIncome, isSalaried, deductions80c, deductions80d } = parsed || {};
 
-  if (typeof grossIncome !== 'number' || !isFinite(grossIncome) || grossIncome < 0) {
+  if (typeof grossIncome !== 'number' || !isFinite(grossIncome) || grossIncome < 0 || grossIncome > MAX_SANE_INCOME) {
     return { ok: false, reason: 'INVALID_GROSS_INCOME_FIELD' };
   }
   if (typeof isSalaried !== 'boolean') {
@@ -108,6 +110,9 @@ async function handler(event, { invokeModel = defaultInvokeModel } = {}) {
   const { text } = input;
   if (typeof text !== 'string' || text.trim() === '') {
     return { statusCode: 400, headers, body: JSON.stringify({ error: 'text is required and must be a non-empty string.' }) };
+  }
+  if (text.length > MAX_INPUT_LENGTH) {
+    return { statusCode: 400, headers, body: JSON.stringify({ error: `text must be ${MAX_INPUT_LENGTH} characters or fewer.` }) };
   }
 
   const prompt = buildPrompt(text);

@@ -28,6 +28,17 @@ Parameters:
       foundation-model resource even though the inference-profile
       permission was correct -- this split exists specifically to prevent
       that mismatch recurring silently.
+  AllowedOrigin:
+    Type: String
+    Default: "https://main.d20j0nwiyvjjou.amplifyapp.com"
+    Description: >-
+      Restricts CORS to this one origin instead of "*". VERIFY this exactly
+      matches your live Amplify URL before deploying -- if it's wrong or
+      the URL ever changes, requests from the real site will be silently
+      blocked by the browser (a CORS failure, not a 500 -- it will look
+      identical to the offline-fallback path triggering for no reason).
+      If this causes any issue, the safe revert is one line: set AllowOrigins
+      back to ["*"] in the CorsConfiguration below and redeploy.
 
 Globals:
   Function:
@@ -37,13 +48,20 @@ Globals:
   HttpApi:
     CorsConfiguration:
       AllowOrigins:
-        - "*"
+        - !Ref AllowedOrigin
       AllowMethods:
         - POST
         - OPTIONS
       AllowHeaders:
         - Content-Type
       MaxAge: 300
+    # Basic rate limiting -- these three endpoints are public and two of
+    # them call Bedrock, which costs money per call. 10 req/s steady,
+    # 20 burst is generous for a single-page hackathon demo's real traffic
+    # while still bounding worst-case cost from abuse or a runaway retry loop.
+    DefaultRouteSettings:
+      ThrottlingRateLimit: 10
+      ThrottlingBurstLimit: 20
 
 Resources:
   CalculateFunction:
@@ -76,6 +94,11 @@ Resources:
       CodeUri: lambda-explain/
       Handler: app.handler
       Timeout: 15
+      # Caps worst-case concurrent Bedrock calls (and their cost) from this
+      # one function. 5 is generous for a single-page demo's real traffic;
+      # deliberately conservative given this account's Bedrock quotas have
+      # already shown unusually low defaults (see docs/TEST_PLAN.md).
+      ReservedConcurrentExecutions: 5
       Environment:
         Variables:
           TABLE_NAME: !Ref TaxExplainersTable
@@ -125,6 +148,7 @@ Resources:
       CodeUri: lambda-parse-income/
       Handler: app.handler
       Timeout: 15
+      ReservedConcurrentExecutions: 5
       Environment:
         Variables:
           BEDROCK_MODEL_ID: !Ref BedrockModelId

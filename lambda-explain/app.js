@@ -12,6 +12,7 @@ const bedrockClient = new BedrockRuntimeClient({});
 const TABLE_NAME = process.env.TABLE_NAME;
 const MODEL_ID = process.env.BEDROCK_MODEL_ID;
 const BEDROCK_TIMEOUT_MS = 8000;
+const MAX_QUESTION_LENGTH = 300; // server-side cap, independent of any frontend limit
 
 function normalize(str) {
   return String(str).toLowerCase().replace(/[^a-z0-9]/g, '');
@@ -82,6 +83,13 @@ async function handler(event, { invokeModel = defaultInvokeModel, scanTable } = 
       statusCode: 400,
       headers,
       body: JSON.stringify({ error: 'question is required and must be a non-empty string.' }),
+    };
+  }
+  if (question.length > MAX_QUESTION_LENGTH) {
+    return {
+      statusCode: 400,
+      headers,
+      body: JSON.stringify({ error: `question must be ${MAX_QUESTION_LENGTH} characters or fewer.` }),
     };
   }
 
