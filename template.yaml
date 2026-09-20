@@ -94,11 +94,15 @@ Resources:
       CodeUri: lambda-explain/
       Handler: app.handler
       Timeout: 15
-      # Caps worst-case concurrent Bedrock calls (and their cost) from this
-      # one function. 5 is generous for a single-page demo's real traffic;
-      # deliberately conservative given this account's Bedrock quotas have
-      # already shown unusually low defaults (see docs/TEST_PLAN.md).
-      ReservedConcurrentExecutions: 5
+      # ReservedConcurrentExecutions was tried here and on ParseIncomeFunction
+      # (5 each, 10 total) and REMOVED after a real deploy failure: this
+      # account's total Lambda concurrency ceiling is low enough that
+      # reserving 10 violated AWS's hard rule requiring at least 10 units
+      # of UNRESERVED concurrency to always remain account-wide. Consistent
+      # with the same low-default-quota pattern already found for Bedrock
+      # (see docs/TEST_PLAN.md). Rate limiting at the API Gateway level
+      # (DefaultRouteSettings above) still bounds worst-case traffic without
+      # needing a per-function concurrency reservation.
       Environment:
         Variables:
           TABLE_NAME: !Ref TaxExplainersTable
@@ -148,7 +152,6 @@ Resources:
       CodeUri: lambda-parse-income/
       Handler: app.handler
       Timeout: 15
-      ReservedConcurrentExecutions: 5
       Environment:
         Variables:
           BEDROCK_MODEL_ID: !Ref BedrockModelId
