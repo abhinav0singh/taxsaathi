@@ -112,12 +112,35 @@ are meaningful for realistic inputs in both regimes.
 above against ground truth:
 
 **What it computes**, given the user's current inputs:
-- **`checkRebateCliffProximity`** — rebate cliff-edge proximity (kept,
-  verified real): if the user is near the New Regime 87A rebate cliff-edge
-  (₹12L / ₹12.75L threshold), flag it explicitly — crossing it by a small
-  amount has an outsized effect (a ₹1 increase in income can add tens of
-  thousands in tax; see the rebate cliff-edge note already in
-  `calculator.js`).
+- **`checkRebateCliffProximity`** — rebate WALL-ZONE proximity (function
+  name kept for API stability; the concept was corrected). A pre-submission
+  review found this was implemented as a hard cliff (₹0 tax exactly at
+  ₹12L, full slab tax the instant it's exceeded) -- WRONG. The real rule is
+  Section 87A marginal relief (Finance Bill 2025): tax is capped at the
+  amount income exceeds ₹12L by, creating a WALL zone (₹12L-~₹12.7L
+  taxable) where roughly every extra rupee costs roughly a rupee in tax,
+  not a cliff to zero. Verified two independent ways (hand-computed in
+  Python separately from the JS, then cross-checked against real published
+  Finance Bill 2025 examples using the identical numbers: taxable ₹12.1L ->
+  ₹10,400, not the old code's wrong ₹61,500) before fixing. The same class
+  of bug existed in `compareAcrossYears`'s FY2024-25 comparison (₹7L
+  threshold) and was fixed there too.
+
+  A second, independently confirmed bug was found in the same review: Old
+  Regime's ₹50,000 standard deduction for salaried taxpayers was missing
+  entirely from `calculateOldRegime` -- it took no `isSalaried` parameter
+  at all. This silently biased every salaried Old-vs-New comparison toward
+  New. Fixed by threading `isSalaried` through `calculateOldRegime`,
+  `compareRegimes`, `analyzeDeductionHeadroom`, and `analyzeSlabBoundary`.
+  Also added: a ₹25,000 80D cap (previously unlimited; real law allows
+  more for senior citizens, not modeled here -- no age input exists) and a
+  combined `otherOldRegimeDeductions` field (HRA/home loan interest/NPS,
+  not modeled individually).
+
+  Both bugs are covered by a REBUILT test suite (41 tests, not a patch of
+  the old 43) -- the old suite encoded the same wrong assumptions the code
+  had, so passing tests never could have caught this. See
+  `calculator/test_calculator.js`'s header note.
 - **`analyzeDeductionHeadroom`** — within-regime marginal savings (new):
   given whichever regime is currently recommended, compute how much tax
   would be saved by maxing remaining unused 80C/80D room. Caveat: its
@@ -189,9 +212,26 @@ that costs a screenshot, not engineering time.
 | Retrieval-lite keyword match | Real vector search (e.g. OpenSearch, embeddings) |
 | Single DynamoDB table, hand-written data | Larger curated/maintained dataset, versioned |
 | No automated CI tests on deploy | CI pipeline running the test suite pre-deploy, incl. `sam deploy` on merge |
-| Surcharge only handles first tier | Full surcharge tier logic + marginal relief |
 | Optimizer suggests one lever at a time | Multi-variable optimization across several deduction types at once |
+| Section 80D capped at a flat ₹25,000 (no age input exists) | Model the real senior-citizen/parent tiered limits |
+| HRA / home loan interest / NPS combined into one `otherOldRegimeDeductions` field | Model each with its own real eligibility rules (HRA especially depends on rent, salary structure, city) |
+| Surcharge only handles the first tier (>₹50L), and does not implement SURCHARGE's own separate marginal-relief provision (distinct from the 87A rebate marginal relief fixed in section 6 -- these are two different mechanisms in real law) | Full surcharge tier logic + its own marginal relief |
 
 Note: Lambda **execution roles** are now scoped per section 3 — that's no
 longer in the "shortcut" column, it's treated as correct-by-default even
 under time pressure, since SAM makes it roughly free to do right.
+
+**Security hardening, added late (post pre-submission review):** API
+Gateway CORS restricted from `*` to the actual Amplify origin specifically
+(a real, deploy-tested risk -- get the origin wrong and the live site's
+own requests silently fail, indistinguishable from the offline-fallback
+triggering for no reason). Basic throttling added (10 req/s, burst 20) at
+the API Gateway level. `ReservedConcurrentExecutions` was attempted on the
+two Bedrock-calling functions and had to be REMOVED after a real deploy
+failure -- this account's total Lambda concurrency ceiling is low enough
+that reserving 10 units violated AWS's hard rule requiring 10 units to
+always remain unreserved account-wide. Consistent with the same
+low-default-quota pattern already documented for Bedrock (see
+docs/TEST_PLAN.md section 5) -- worth knowing this account specifically
+has unusually low default service limits across more than one AWS
+service, not just Bedrock.

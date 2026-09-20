@@ -20,7 +20,7 @@ without large deductions), so it's not a bug — but it means "compare Old
 vs New and pick one" is a weak pitch, since the answer is nearly always
 the same. Reframed the product's core value below from *regime comparison*
 to *explaining a mostly-settled answer clearly, and catching specific
-numeric traps (rebate cliff-edge, marginal savings) a plain calculator
+numeric traps (the rebate wall zone, marginal savings) a plain calculator
 would compute but not surface.*
 
 ## 1. Problem
@@ -34,11 +34,12 @@ stop there. Two specific gaps this project targets:
    default for them — they see "two regimes" and assume it's a real choice
    requiring research, when for most of them it structurally isn't anymore.
    Nobody's explaining *why*, in their own numbers.
-2. A plain calculator computes a rebate cliff-edge or a marginal-savings
-   opportunity but doesn't **surface** it — the number exists in the math,
-   but the user never sees it unless they know to go looking. E.g., earning
-   ₹1 over the ₹12.75L threshold can add ₹60,000+ in tax; nothing about
-   that is obvious from a bare "your tax is ₹X" output.
+2. A plain calculator computes the rebate wall zone (Section 87A marginal
+   relief -- not a hard cliff to zero, corrected from an earlier internal
+   finding, see SSD.md) or a marginal-savings opportunity but doesn't
+   **surface** it. E.g., in the ₹12L-₹12.7L wall zone, roughly every extra
+   rupee earned costs roughly a rupee in tax; nothing about that is obvious
+   from a bare "your tax is ₹X" output.
 
 ## 2. Target user
 
@@ -46,7 +47,7 @@ A 20-something earning their first salary or freelance income, who has never
 filed an ITR, doesn't know what "80C" or "regime" means, and would otherwise
 either (a) blindly trust New Regime without knowing why it's right for them,
 or (b) waste time comparing regimes manually when the answer is settled for
-their situation — while missing the specific numeric traps (cliff-edges,
+their situation — while missing the specific numeric traps (the rebate wall zone,
 unused deduction headroom) a bare calculator wouldn't point out.
 
 ## 3. Goals (in priority order — cut from the bottom if time runs short)
@@ -58,7 +59,7 @@ unused deduction headroom) a bare calculator wouldn't point out.
    comparison still runs and is shown (transparency matters), but the
    product doesn't oversell it as a genuine toss-up.
 2. **Must have:** Two verified, always-meaningful insight functions on top
-   of the calculator — rebate cliff-edge proximity detection, and
+   of the calculator — rebate wall-zone proximity detection, and
    within-regime marginal savings from unused 80C/80D headroom. (Dropped:
    a cross-regime "crossover" lever that, per v2.1, can't fire for
    realistic inputs — see docs/SSD.md section 6 for the full finding.)
