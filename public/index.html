@@ -141,7 +141,7 @@
     <dialog id="connection-dialog" class="connection-dialog"><button class="dialog-close" id="dialog-close" type="button" aria-label="Close">×</button><p class="eyebrow"><span class="eyebrow-line"></span> Developer setting</p><h2>Connect your<br /><em>API.</em></h2><p>Paste the API Gateway base URL from your SAM deploy output. It is saved only in this browser.</p><label for="api-base-input">API base URL</label><input id="api-base-input" type="url" placeholder="https://xxxx.execute-api.ap-south-1.amazonaws.com" /><div class="dialog-actions"><button class="button button-dark" id="save-api-button" type="button">Save connection <span>↗</span></button><button class="text-link" id="clear-api-button" type="button">Use same origin</button></div><p class="dialog-note" id="dialog-note"></p></dialog>
 
     <script>
-      window.TAXSAATHI_CONFIG = window.TAXSAATHI_CONFIG || { apiBase: "" };
+      window.TAXSAATHI_CONFIG = window.TAXSAATHI_CONFIG || { apiBase: "https://t0b34tyox3.execute-api.ap-south-1.amazonaws.com" };
     </script>
     <script type="importmap">{"imports":{"three":"https://unpkg.com/three@0.160.0/build/three.module.js"}}</script>
     <script type="module" src="./app.js"></script>
